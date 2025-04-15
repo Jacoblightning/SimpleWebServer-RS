@@ -6,6 +6,7 @@ use std::io::{Read, Write};
 use std::net::{IpAddr, Shutdown, TcpListener, TcpStream};
 use std::path::{PathBuf, absolute};
 use chrono::{DateTime, Duration, Timelike, Utc};
+use std::thread;
 
 use clap::Parser;
 
@@ -29,11 +30,12 @@ struct Cli {
 }
 
 fn error_stream(mut stream: TcpStream, error_id: u16) {
+    // These calls dont "need" to succeed. It would just be nice if they did. That's why we use unwrap_or_default
     stream
         .write(format!("HTTP/1.1 {} Bad Request\n\n{}\n", error_id, error_id).as_bytes())
-        .unwrap();
-    stream.flush().unwrap();
-    stream.shutdown(Shutdown::Both).unwrap();
+        .unwrap_or_default();
+    stream.flush().unwrap_or_default();
+    stream.shutdown(Shutdown::Both).unwrap_or_default();
 }
 
 fn print_message(ip: String, path: &str, error_id: u16) {
@@ -147,7 +149,7 @@ fn handle_client(mut stream: TcpStream, header_regex: &Regex, zlog: bool) {
 fn main() -> std::io::Result<()> {
     let cli = Cli::parse();
 
-    let re = Regex::new(r"^GET (/.*?) HTTP/(?s).*$").unwrap();
+    //let re = Regex::new(r"^GET (/.*?) HTTP/(?s).*$").unwrap();
 
     let listener = TcpListener::bind(format!("{}:{}", cli.bindto, cli.port))?;
 
@@ -156,6 +158,8 @@ fn main() -> std::io::Result<()> {
     let mut requests: HashMap<IpAddr, u64> = HashMap::new();
     let mut lastminute = Utc::now().minute();
     let mut ratelimits: HashMap<IpAddr, DateTime<Utc>> = HashMap::new();
+    
+    let mut handles: Vec<thread::JoinHandle<()>> = Vec::new();
 
     for stream in listener.incoming() {
         // Rate limiting
@@ -196,9 +200,18 @@ fn main() -> std::io::Result<()> {
                 }
             }
         }
-
         // Handler
-        handle_client(stream?, &re, cli.zerologs);
+        handles.push(std::thread::spawn(
+            move || {
+                // I'm really sad that I have to make a new Regex every iteration but I don't understand rust enough to fix it.
+                let re = Regex::new(r"^GET (/.*?) HTTP/(?s).*$").unwrap();
+                let stream = stream;
+                handle_client(stream.unwrap(), &re, cli.zerologs);
+            }
+        ));
+    }
+    for handle in handles {
+        handle.join().unwrap_or_default();
     }
     Ok(())
 }
