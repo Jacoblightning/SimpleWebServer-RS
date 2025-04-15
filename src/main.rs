@@ -26,8 +26,8 @@ fn error_stream(mut stream: TcpStream, error_id: u16) {
     stream.shutdown(Shutdown::Both).unwrap();
 }
 
-fn print_message(path: &str, error_id: u16) {
-    let message = format!("GET {} - {}", path, error_id);
+fn print_message(ip: String, path: &str, error_id: u16) {
+    let message = format!("{}: GET {} - {}", ip, path, error_id);
     if error_id == 200 {
         println!("{}", message.green());
     } else {
@@ -36,7 +36,9 @@ fn print_message(path: &str, error_id: u16) {
 }
 
 fn handle_client(mut stream: TcpStream, header_regex: &Regex) {
-    //println!("Connection from {}", stream.peer_addr().unwrap());
+    let peer = stream.peer_addr().unwrap();
+    //println!("Connection from {}", peer.to_string());
+    
     let mut buffer: [u8; 4096] = [0; 4096];
     stream.read(&mut buffer).unwrap();
 
@@ -69,7 +71,7 @@ fn handle_client(mut stream: TcpStream, header_regex: &Regex) {
     path = PathBuf::from(path.strip_prefix("/").unwrap());
 
     if !path.exists() {
-        print_message(&m[1], 404);
+        print_message(peer.ip().to_string(), &m[1], 404);
         error_stream(stream, 404);
         return;
     }
@@ -102,7 +104,7 @@ fn handle_client(mut stream: TcpStream, header_regex: &Regex) {
 
     match file {
         Ok(file) => {
-            print_message(&m[1], 200);
+            print_message(peer.ip().to_string(), &m[1], 200);
             stream.write_all(b"HTTP/1.1 200 OK\n\n").unwrap();
             stream.write_all(&*file).unwrap();
         }
