@@ -1,9 +1,11 @@
+use std::collections::HashMap;
 use colored::Colorize;
 use regex::Regex;
 use std::fs;
 use std::io::{Read, Write};
-use std::net::{Shutdown, TcpListener, TcpStream};
+use std::net::{IpAddr, Shutdown, TcpListener, TcpStream};
 use std::path::{PathBuf, absolute};
+use chrono::{DateTime, Duration, Timelike, Utc};
 
 use clap::Parser;
 
@@ -11,16 +13,24 @@ use clap::Parser;
 #[command(version, about, long_about = None)]
 struct Cli {
     // Bind IP Address
-    #[arg(default_value_t = String::from("127.0.0.1"))]
+    #[arg(default_value = "127.0.0.1")]
     bindto: String,
     // Bind Port
     #[arg(default_value_t = 8080)]
     port: u16,
+    #[arg(long, default_value_t = false, help="Disable logging. Primary use case is for company's who say they don't store logs.")]
+    zerologs: bool,
+    #[arg(short = 'r', long, default_value_t = 120, help="Maximum requests per second before rate-limiting. 0 to disable")]
+    ratelimit: u16,
+    #[arg(short = 'd', long, default_value_t = 180, help="Timeout in seconds after exceeding ratelimit")]
+    timeout: i64,
+    #[arg(short = 'v', long, default_value_t = false, help="Use verbose output")]
+    verbose: bool,
 }
 
 fn error_stream(mut stream: TcpStream, error_id: u16) {
     stream
-        .write(format!("HTTP/1.1 {} Bad Request\n\n{}", error_id, error_id).as_bytes())
+        .write(format!("HTTP/1.1 {} Bad Request\n\n{}\n", error_id, error_id).as_bytes())
         .unwrap();
     stream.flush().unwrap();
     stream.shutdown(Shutdown::Both).unwrap();
@@ -35,7 +45,7 @@ fn print_message(ip: String, path: &str, error_id: u16) {
     }
 }
 
-fn handle_client(mut stream: TcpStream, header_regex: &Regex) {
+fn handle_client(mut stream: TcpStream, header_regex: &Regex, zlog: bool) {
     let peer = stream.peer_addr().unwrap();
     //println!("Connection from {}", peer.to_string());
     
@@ -45,7 +55,9 @@ fn handle_client(mut stream: TcpStream, header_regex: &Regex) {
     let header = String::from_utf8_lossy(&buffer);
 
     if !header_regex.is_match(&header) {
-        println!("{}", "GET - 400".yellow());
+        if !zlog {
+            println!("{}", "GET - 400".yellow());
+        }
         error_stream(stream, 400);
         return;
     }
@@ -71,7 +83,9 @@ fn handle_client(mut stream: TcpStream, header_regex: &Regex) {
     path = PathBuf::from(path.strip_prefix("/").unwrap());
 
     if !path.exists() {
-        print_message(peer.ip().to_string(), &m[1], 404);
+        if !zlog {
+            print_message(peer.ip().to_string(), &m[1], 404);
+        }
         error_stream(stream, 404);
         return;
     }
@@ -81,10 +95,12 @@ fn handle_client(mut stream: TcpStream, header_regex: &Regex) {
             path = _path;
         }
         Err(_) => {
-            println!(
-                "{}",
-                format!("!!! TOCTOU Prevented: {} !!!", path.display()).red()
-            );
+            if !zlog {
+                println!(
+                    "{}",
+                    format!("!!! TOCTOU Prevented: {} !!!", path.display()).red()
+                );
+            }
             error_stream(stream, 404);
             return;
         }
@@ -92,10 +108,12 @@ fn handle_client(mut stream: TcpStream, header_regex: &Regex) {
 
     // Protection from directory escape
     if !path.starts_with(PathBuf::from(".").canonicalize().unwrap()) {
-        println!(
-            "{}",
-            format!("!!! Directory escape prevented: {} !!!", path.display()).red()
-        );
+        if !zlog {
+            println!(
+                "{}",
+                format!("!!! Directory escape prevented: {} !!!", path.display()).red()
+            );
+        }
         error_stream(stream, 404);
         return;
     }
@@ -104,15 +122,19 @@ fn handle_client(mut stream: TcpStream, header_regex: &Regex) {
 
     match file {
         Ok(file) => {
-            print_message(peer.ip().to_string(), &m[1], 200);
+            if !zlog {
+                print_message(peer.ip().to_string(), &m[1], 200);
+            }
             stream.write_all(b"HTTP/1.1 200 OK\n\n").unwrap();
             stream.write_all(&*file).unwrap();
         }
         Err(e) => {
-            println!(
-                "{}",
-                format!("Error reading file (this shouldn't happen): {}", e).red()
-            );
+            if !zlog {
+                println!(
+                    "{}",
+                    format!("Error reading file (this shouldn't happen): {}", e).red()
+                );
+            }
             error_stream(stream, 500);
             return;
         }
@@ -131,8 +153,52 @@ fn main() -> std::io::Result<()> {
 
     println!("Serving on: {}", listener.local_addr()?);
 
+    let mut requests: HashMap<IpAddr, u64> = HashMap::new();
+    let mut lastminute = Utc::now().minute();
+    let mut ratelimits: HashMap<IpAddr, DateTime<Utc>> = HashMap::new();
+
     for stream in listener.incoming() {
-        handle_client(stream?, &re);
+        // Rate limiting
+        if cli.ratelimit > 0 {
+            let ip = stream.as_ref().unwrap().peer_addr()?.ip();
+            let now = Utc::now();
+            if ratelimits.contains_key(&ip) {
+                if now > ratelimits[&ip] {
+                    ratelimits.remove(&ip);
+                } else {
+                    let left = (ratelimits[&ip] - now).num_seconds();
+                    stream.as_ref().unwrap().write(format!("HTTP/1.1 429 Too Many Requests\nRetry-After: {}\n\n429\n", left).as_bytes())?;
+                    stream.as_ref().unwrap().flush()?;
+                    stream.as_ref().unwrap().shutdown(Shutdown::Both)?;
+                    if cli.verbose {
+                        println!("{}", format!("Rejecting request from rate-limited ip: {}. {} secs left on ratelimit.", ip, left).blue());
+                    }
+                    continue;
+                }
+            }
+            if now.minute() != lastminute {
+                lastminute = now.minute();
+                requests.clear();
+                println!("{}", "Request count reset.".blue());
+            } else {
+                if requests.contains_key(&ip) {
+                    requests.insert(ip, requests[&ip]+1);
+                } else {
+                    requests.insert(ip, 1);
+                }
+                if requests[&ip] >= cli.ratelimit.into() {
+                    if !cli.zerologs {
+                        println!("{}", format!("Rate limiting {} after {} requests in a minute.", &ip.to_string(), requests[&ip]).red());
+                    }
+                    ratelimits.insert(ip, now.checked_add_signed(Duration::seconds(cli.timeout)).unwrap());
+                    requests.remove(&ip);
+                    continue;
+                }
+            }
+        }
+
+        // Handler
+        handle_client(stream?, &re, cli.zerologs);
     }
     Ok(())
 }
