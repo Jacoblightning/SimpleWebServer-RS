@@ -196,6 +196,14 @@ fn main() -> std::io::Result<()> {
                     }
                     ratelimits.insert(ip, now.checked_add_signed(Duration::seconds(cli.timeout)).unwrap());
                     requests.remove(&ip);
+
+                    let left = (ratelimits[&ip] - now).num_seconds();
+                    stream.as_ref().unwrap().write(format!("HTTP/1.1 429 Too Many Requests\nRetry-After: {}\n\n429\n", left).as_bytes())?;
+                    stream.as_ref().unwrap().flush()?;
+                    stream.as_ref().unwrap().shutdown(Shutdown::Both)?;
+                    if cli.verbose {
+                        println!("{}", format!("Rejecting request from rate-limited ip: {}. {} secs left on ratelimit.", ip, left).blue());
+                    }
                     continue;
                 }
             }
