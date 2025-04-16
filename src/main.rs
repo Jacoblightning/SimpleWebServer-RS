@@ -26,12 +26,23 @@ struct Cli {
     #[arg(default_value_t = 8080)]
     port: u16,
     #[arg(
+        short = 'q',
         long,
         default_value_t = false,
-        help = "Disable logging. Primary use case is for companies who say they don't store logs.",
+        help = "Disable logging.",
         conflicts_with = "verbose"
     )]
-    zerologs: bool,
+    quiet: bool,
+    #[arg(
+        short = 'v',
+        long,
+        default_value_t = false,
+        help = "Use verbose output",
+        conflicts_with = "quiet"
+    )]
+    verbose: bool,
+    #[arg(long, default_value_t = false, help = "Use log files in addition to logging on stdout/err")]
+    enablelogfiles: bool,
     #[arg(
         short = 'r',
         long,
@@ -46,14 +57,6 @@ struct Cli {
         help = "Timeout in seconds after exceeding ratelimit"
     )]
     timeout: i64,
-    #[arg(
-        short = 'v',
-        long,
-        default_value_t = false,
-        help = "Use verbose output",
-        conflicts_with = "zerologs"
-    )]
-    verbose: bool,
     #[arg(short = 'b', long, help="Files to blacklist from serving. (Defaults to log files)")]
     blacklist: Option<Vec<String>>,
 }
@@ -75,7 +78,7 @@ fn print_message(ip: &str, path: &str, error_id: u16) {
     }
 }
 
-fn handle_client(mut stream: TcpStream, zlog: bool, blacklist: &[PathBuf]) {
+fn handle_client(mut stream: TcpStream, blacklist: &[PathBuf]) {
     static HEADER_REGEX: Lazy<Regex> =
         Lazy::new(|| Regex::new(r"^GET (/.*?) HTTP/(?s).*$").unwrap());
 
@@ -88,9 +91,7 @@ fn handle_client(mut stream: TcpStream, zlog: bool, blacklist: &[PathBuf]) {
     let header = String::from_utf8_lossy(&buffer);
 
     if !HEADER_REGEX.is_match(&header) {
-        if !zlog {
-            warn!("Malformed request from {peer}:\n{header}");
-        }
+        warn!("Malformed request from {}:\n{header}", peer.ip());
         error_stream(stream, 400);
         return;
     }
@@ -116,9 +117,7 @@ fn handle_client(mut stream: TcpStream, zlog: bool, blacklist: &[PathBuf]) {
     path = PathBuf::from(path.strip_prefix("/").unwrap());
 
     if !path.exists() {
-        if !zlog {
-            print_message(&peer.ip().to_string(), &m[1], 404);
-        }
+        print_message(&peer.ip().to_string(), &m[1], 404);
         error_stream(stream, 404);
         return;
     }
@@ -126,19 +125,14 @@ fn handle_client(mut stream: TcpStream, zlog: bool, blacklist: &[PathBuf]) {
     if let Ok(path_) = path.canonicalize() {
         path = path_;
     } else {
-        if !zlog {
-            error!(
-                "!!! TOCTOU Prevented: {} !!!", path.display());
-        }
+        error!("!!! TOCTOU Prevented: {} !!!", path.display());
         error_stream(stream, 404);
         return;
     }
 
     // Protection from directory escape
     if !path.starts_with(PathBuf::from(".").canonicalize().unwrap()) {
-        if !zlog {
-            error!("!!! Directory escape prevented: {} !!!", path.display());
-        }
+        error!("!!! Directory escape prevented: {} !!!", path.display());
         error_stream(stream, 404);
         return;
     }
@@ -154,16 +148,12 @@ fn handle_client(mut stream: TcpStream, zlog: bool, blacklist: &[PathBuf]) {
 
     match file {
         Ok(file) => {
-            if !zlog {
-                print_message(&peer.ip().to_string(), &m[1], 200);
-            }
+            print_message(&peer.ip().to_string(), &m[1], 200);
             stream.write_all(b"HTTP/1.1 200 OK\n\n").unwrap();
             stream.write_all(&file).unwrap();
         }
         Err(e) => {
-            if !zlog {
-                error!("Error reading file (this shouldn't happen): {e}");
-            }
+            error!("Error reading file (this shouldn't happen): {e}");
             error_stream(stream, 500);
             return;
         }
@@ -177,15 +167,20 @@ fn main() -> std::io::Result<()> {
         .set_time_format_custom(format_description!(version = 2, "[weekday repr:short] [month repr:short] [day] [hour repr:12]:[minute]:[second] [period case:upper] [year repr:full]"))
         .build();
 
-    CombinedLogger::init(
-        vec![
-            TermLogger::new(LevelFilter::Info,   logconfig.clone(), TerminalMode::Mixed, ColorChoice::Auto),
-            WriteLogger::new(LevelFilter::Debug, logconfig.clone(), File::create("SimpleWebServer.log")?),
-            WriteLogger::new(LevelFilter::Trace, logconfig, File::create("SimpleWebServer-FULL.log")?),
-        ]
-    ).unwrap();
-
     let cli = Cli::parse();
+
+    if cli.enablelogfiles {
+        CombinedLogger::init(
+            vec![
+                TermLogger::new(if cli.quiet {LevelFilter::Off} else {LevelFilter::Info},   logconfig.clone(), TerminalMode::Mixed, ColorChoice::Auto),
+                WriteLogger::new(LevelFilter::Debug, logconfig.clone(), File::create("SimpleWebServer.log")?),
+                WriteLogger::new(LevelFilter::Trace, logconfig, File::create("SimpleWebServer-FULL.log")?),
+            ]
+        ).unwrap();
+    } else if !cli.quiet {
+        TermLogger::init(if cli.verbose {LevelFilter::Trace} else {LevelFilter::Info}, logconfig, TerminalMode::Mixed, ColorChoice::Auto).unwrap();
+    }
+
 
     //let re = Regex::new(r"^GET (/.*?) HTTP/(?s).*$").unwrap();
 
@@ -236,9 +231,7 @@ fn main() -> std::io::Result<()> {
                     )?;
                     stream.as_ref().unwrap().flush()?;
                     stream.as_ref().unwrap().shutdown(Shutdown::Both)?;
-                    if cli.verbose {
-                        debug!("Rejecting request from rate-limited ip: {ip}. {left} secs left on ratelimit.");
-                    }
+                    debug!("Rejecting request from rate-limited ip: {ip}. {left} secs left on ratelimit.");
                     continue;
                 }
             }
@@ -249,9 +242,7 @@ fn main() -> std::io::Result<()> {
                     requests.insert(ip, 1);
                 }
                 if requests[&ip] >= cli.ratelimit.into() {
-                    if !cli.zerologs {
-                        warn!("Rate limiting {} after {} requests in a minute.", &ip.to_string(), requests[&ip]);
-                    }
+                    warn!("Rate limiting {} after {} requests in a minute.", &ip.to_string(), requests[&ip]);
                     ratelimits.insert(
                         ip,
                         now.checked_add_signed(Duration::seconds(cli.timeout))
@@ -266,22 +257,18 @@ fn main() -> std::io::Result<()> {
                     )?;
                     stream.as_ref().unwrap().flush()?;
                     stream.as_ref().unwrap().shutdown(Shutdown::Both)?;
-                    if cli.verbose {
-                        debug!("Rejecting request from rate-limited ip: {ip}. {left} secs left on ratelimit.");
-                    }
+                    debug!("Rejecting request from rate-limited ip: {ip}. {left} secs left on ratelimit.");
                     continue;
                 }
             } else {
                 lastminute = now.minute();
                 requests.clear();
-                if cli.verbose {
-                    trace!("Request count reset.");
-                }
+                trace!("Request count reset.");
             }
         }
         let b2 = normalizedblist.clone();
         // Handler
-        thread::spawn(move || handle_client(stream.unwrap(), cli.zerologs, &b2));
+        thread::spawn(move || handle_client(stream.unwrap(), &b2));
         //handle_client(stream?, cli.zerologs);
     }
     Ok(())

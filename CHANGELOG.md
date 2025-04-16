@@ -12,15 +12,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Readme update
-- Change changelog link
 
 ### Removed
 
 
+## [0.2.0]
+
+### Added
+
+- Made logfiles opt-in
+
+### Changed
+
+- Readme update
+- Change changelog link
+
+### Fixed
+
+- Quiet and Verbose functionality
+
+
 ## [0.1.4] - 2024-04-16
 
-### Added:
+### Changed:
+
 - Fixed version string to be compatible with crates.io
 - Why are licenses so confusing? Relicense under Apache-2.0 OR MIT
 - Rename project to avoid conflict. (Sadly)
@@ -30,13 +45,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### First notable release.
 
-### Added:
+### Info:
 - Releasing on crates.io
 - (Somewhat) stable argument interface
 
 
 
 
-[unreleased]: https://github.com/Jacoblightning/SimpleWebServer-RS/compare/v0.1.4...HEAD
+[unreleased]: https://github.com/Jacoblightning/SimpleWebServer-RS/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Jacoblightning/SimpleWebServer-RS/compare/v0.1.4...v0.2.0
 [0.1.4]: https://github.com/Jacoblightning/SimpleWebServer-RS/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/Jacoblightning/SimpleWebServer-RS/releases/tag/v0.1.3
