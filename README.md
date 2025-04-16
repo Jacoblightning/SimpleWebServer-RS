@@ -6,7 +6,7 @@ A simple web server capable of handling GET requests.
 ## From crates.io
 
 ```shell
-cargo install SimpleWebServer
+cargo install simplewebserver_rs
 ```
 
 # From GitHub
@@ -25,27 +25,27 @@ Then remove the directory if you want
 
 You can do that:
 ```shell
-SimpleWebServer
+simplewebserver_rs
 ```
 
 ## Blacklist a file(s) from being hosted:
 
 You can do that:
 ```shell
-SimpleWebServer -b file1 -b file2 -b file3 ...
+simplewebserver_rs -b file1 -b file2 -b file3 ...
 ```
 
 # Implement an extremely strict ratelimit policy but only enforce it for 5 seconds:
 
 You can even do that:
 ```shell
-SimpleWebServer -r 2 -d 5
+simplewebserver_rs -r 2 -d 5
 ```
 
 # Implement an even worse ratelimit policy so you can brag that your webserver is set up like R2-D2:
 
 ...
 ```shell
-SimpleWebServer -r 2 -d 2
+simplewebserver_rs -r 2 -d 2
 ```
 um... anyway
