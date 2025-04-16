@@ -36,7 +36,7 @@ struct Cli {
         short = 'r',
         long,
         default_value_t = 120,
-        help = "Maximum requests per second before rate-limiting. 0 to disable"
+        help = "Maximum requests per minute before rate-limiting. 0 to disable"
     )]
     ratelimit: u16,
     #[arg(

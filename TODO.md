@@ -1,3 +1,4 @@
 # Todo:
-- Caching
-- Better logging
+- ~~Caching~~ (Not happening)
+- ~~Better logging~~
+- EVEN MORE LOGGING POWER
