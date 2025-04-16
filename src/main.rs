@@ -3,7 +3,7 @@
 #![deny(clippy::nursery)]
 #![deny(clippy::cargo)]
 
-use chrono::{DateTime, Duration, Timelike, Utc};
+use chrono::{DateTime, Duration, Timelike, Utc, Local};
 use colored::Colorize;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -28,7 +28,7 @@ struct Cli {
     #[arg(
         long,
         default_value_t = false,
-        help = "Disable logging. Primary use case is for company's who say they don't store logs.",
+        help = "Disable logging. Primary use case is for companies who say they don't store logs.",
         conflicts_with = "verbose"
     )]
     zerologs: bool,
@@ -57,7 +57,7 @@ struct Cli {
 }
 
 fn error_stream(mut stream: TcpStream, error_id: u16) {
-    // These calls dont "need" to succeed. It would just be nice if they did. That's why we use unwrap_or_default
+    // These calls don't "need" to succeed. It would just be nice if they did. That's why we use unwrap_or_default
     stream
         .write_all(format!("HTTP/1.1 {error_id} Bad Request\n\n{error_id}\n").as_bytes())
         .unwrap_or_default();
@@ -66,7 +66,8 @@ fn error_stream(mut stream: TcpStream, error_id: u16) {
 }
 
 fn print_message(ip: &str, path: &str, error_id: u16) {
-    let message = format!("{ip}: GET {path} - {error_id}");
+    let time = Local::now().format("%a %b %e %I:%M:%S %p %Y");
+    let message = format!("{time} - {ip}: GET {path} - {error_id}");
     if error_id == 200 {
         println!("{}", message.green());
     } else {
@@ -88,7 +89,8 @@ fn handle_client(mut stream: TcpStream, zlog: bool) {
 
     if !HEADER_REGEX.is_match(&header) {
         if !zlog {
-            println!("{}", "GET - 400".yellow());
+            let time = Local::now().format("%a %b %e %I:%M:%S %p %Y");
+            println!("{time} - {}", "GET - 400".yellow());
         }
         error_stream(stream, 400);
         return;
@@ -126,8 +128,9 @@ fn handle_client(mut stream: TcpStream, zlog: bool) {
         path = path_;
     } else {
         if !zlog {
+            let time = Local::now().format("%a %b %e %I:%M:%S %p %Y");
             println!(
-                "{}",
+                "{time} - {}",
                 format!("!!! TOCTOU Prevented: {} !!!", path.display()).red()
             );
         }
@@ -138,8 +141,9 @@ fn handle_client(mut stream: TcpStream, zlog: bool) {
     // Protection from directory escape
     if !path.starts_with(PathBuf::from(".").canonicalize().unwrap()) {
         if !zlog {
+            let time = Local::now().format("%a %b %e %I:%M:%S %p %Y");
             println!(
-                "{}",
+                "{time} - {}",
                 format!("!!! Directory escape prevented: {} !!!", path.display()).red()
             );
         }
@@ -159,8 +163,9 @@ fn handle_client(mut stream: TcpStream, zlog: bool) {
         }
         Err(e) => {
             if !zlog {
+                let time = Local::now().format("%a %b %e %I:%M:%S %p %Y");
                 println!(
-                    "{}",
+                    "{time} - {}",
                     format!("Error reading file (this shouldn't happen): {e}").red()
                 );
             }
@@ -179,7 +184,8 @@ fn main() -> std::io::Result<()> {
 
     let listener = TcpListener::bind(format!("{}:{}", cli.bindto, cli.port))?;
 
-    println!("Serving on: {}", listener.local_addr()?);
+    let time = Local::now().format("%a %b %e %I:%M:%S %p %Y");
+    println!("{time} - Serving on: {}", listener.local_addr()?);
 
     let mut requests: HashMap<IpAddr, u64> = HashMap::new();
     let mut lastminute = Utc::now().minute();
@@ -202,7 +208,8 @@ fn main() -> std::io::Result<()> {
                     stream.as_ref().unwrap().flush()?;
                     stream.as_ref().unwrap().shutdown(Shutdown::Both)?;
                     if cli.verbose {
-                        println!("{}", format!("Rejecting request from rate-limited ip: {ip}. {left} secs left on ratelimit.").blue());
+                        let time = Local::now().format("%a %b %e %I:%M:%S %p %Y");
+                        println!("{time} - {}", format!("Rejecting request from rate-limited ip: {ip}. {left} secs left on ratelimit.").blue());
                     }
                     continue;
                 }
@@ -215,8 +222,9 @@ fn main() -> std::io::Result<()> {
                 }
                 if requests[&ip] >= cli.ratelimit.into() {
                     if !cli.zerologs {
+                        let time = Local::now().format("%a %b %e %I:%M:%S %p %Y");
                         println!(
-                            "{}",
+                            "{time} - {}",
                             format!(
                                 "Rate limiting {} after {} requests in a minute.",
                                 &ip.to_string(),
@@ -240,14 +248,18 @@ fn main() -> std::io::Result<()> {
                     stream.as_ref().unwrap().flush()?;
                     stream.as_ref().unwrap().shutdown(Shutdown::Both)?;
                     if cli.verbose {
-                        println!("{}", format!("Rejecting request from rate-limited ip: {ip}. {left} secs left on ratelimit.").blue());
+                        let time = Local::now().format("%a %b %e %I:%M:%S %p %Y");
+                        println!("{time} - {}", format!("Rejecting request from rate-limited ip: {ip}. {left} secs left on ratelimit.").blue());
                     }
                     continue;
                 }
             } else {
                 lastminute = now.minute();
                 requests.clear();
-                println!("{}", "Request count reset.".blue());
+                if cli.verbose {
+                    let time = Local::now().format("%a %b %e %I:%M:%S %p %Y");
+                    println!("{time} - {}", "Request count reset.".blue());
+                }
             }
         }
         // Handler
