@@ -7,6 +7,7 @@ repository = "https://github.com/Jacoblightning/SimpleWebServer-RS"
 keywords = ["webserver", "web", "server", "simple"]
 categories = ["web-programming::http-server"]
 description = "A very simple web server for hosting html files."
+resolver = "3"
 
 
 [dependencies]
@@ -16,3 +17,8 @@ chrono = "0.4.40"
 regex = "1.11.1"
 # For using regex in a loop
 once_cell = "1.21.3"
+
+# For testing
+[dev-dependencies]
+libc = "0.2.172"
+fastrand = "2.3.0"

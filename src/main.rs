@@ -264,6 +264,7 @@ fn main() -> std::io::Result<()> {
         }
         // Handler
         thread::spawn(move || handle_client(stream.unwrap(), cli.zerologs));
+        //handle_client(stream?, cli.zerologs);
     }
     Ok(())
 }
