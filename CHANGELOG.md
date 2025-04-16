@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added:
 - Fixed version string to be compatible with crates.io
 - Why are licenses so confusing? Relicense under Apache-2.0 OR MIT
+- Rename project to avoid conflict. (Sadly)
 
 
 ## [0.1.3] - 2024-04-16

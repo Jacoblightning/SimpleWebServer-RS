@@ -1,5 +1,5 @@
 [package]
-name = "SimpleWebServer"
+name = "simplewebserver_rs"
 version = "0.1.3"
 edition = "2024"
 license = "Apache-2.0 OR MIT"
