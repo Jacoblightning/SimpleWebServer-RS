@@ -1,3 +1,8 @@
+#![deny(clippy::all)]
+#![deny(clippy::pedantic)]
+#![deny(clippy::nursery)]
+#![deny(clippy::cargo)]
+
 use chrono::{DateTime, Duration, Timelike, Utc};
 use colored::Colorize;
 use regex::Regex;
@@ -23,7 +28,8 @@ struct Cli {
     #[arg(
         long,
         default_value_t = false,
-        help = "Disable logging. Primary use case is for company's who say they don't store logs."
+        help = "Disable logging. Primary use case is for company's who say they don't store logs.",
+        conflicts_with = "verbose"
     )]
     zerologs: bool,
     #[arg(
@@ -44,7 +50,8 @@ struct Cli {
         short = 'v',
         long,
         default_value_t = false,
-        help = "Use verbose output"
+        help = "Use verbose output",
+        conflicts_with = "zerologs"
     )]
     verbose: bool,
 }
@@ -52,14 +59,14 @@ struct Cli {
 fn error_stream(mut stream: TcpStream, error_id: u16) {
     // These calls dont "need" to succeed. It would just be nice if they did. That's why we use unwrap_or_default
     stream
-        .write_all(format!("HTTP/1.1 {} Bad Request\n\n{}\n", error_id, error_id).as_bytes())
+        .write_all(format!("HTTP/1.1 {error_id} Bad Request\n\n{error_id}\n").as_bytes())
         .unwrap_or_default();
     stream.flush().unwrap_or_default();
     stream.shutdown(Shutdown::Both).unwrap_or_default();
 }
 
-fn print_message(ip: String, path: &str, error_id: u16) {
-    let message = format!("{}: GET {} - {}", ip, path, error_id);
+fn print_message(ip: &str, path: &str, error_id: u16) {
+    let message = format!("{ip}: GET {path} - {error_id}");
     if error_id == 200 {
         println!("{}", message.green());
     } else {
@@ -69,12 +76,12 @@ fn print_message(ip: String, path: &str, error_id: u16) {
 
 fn handle_client(mut stream: TcpStream, zlog: bool) {
     static HEADER_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"^GET (/.*?) HTTP/(?s).*$").unwrap());
-    
+
     let peer = stream.peer_addr().unwrap();
     //println!("Connection from {}", peer.to_string());
 
     let mut buffer: [u8; 4096] = [0; 4096];
-    stream.read(&mut buffer).unwrap();
+    let _ = stream.read(&mut buffer).unwrap();
 
     let header = String::from_utf8_lossy(&buffer);
 
@@ -108,26 +115,23 @@ fn handle_client(mut stream: TcpStream, zlog: bool) {
 
     if !path.exists() {
         if !zlog {
-            print_message(peer.ip().to_string(), &m[1], 404);
+            print_message(&peer.ip().to_string(), &m[1], 404);
         }
         error_stream(stream, 404);
         return;
     }
 
-    match path.canonicalize() {
-        Ok(_path) => {
-            path = _path;
+    if let Ok(path_) = path.canonicalize() {
+        path = path_; 
+    } else {
+        if !zlog {
+            println!(
+                "{}",
+                format!("!!! TOCTOU Prevented: {} !!!", path.display()).red()
+            );
         }
-        Err(_) => {
-            if !zlog {
-                println!(
-                    "{}",
-                    format!("!!! TOCTOU Prevented: {} !!!", path.display()).red()
-                );
-            }
-            error_stream(stream, 404);
-            return;
-        }
+        error_stream(stream, 404);
+        return;
     }
 
     // Protection from directory escape
@@ -147,7 +151,7 @@ fn handle_client(mut stream: TcpStream, zlog: bool) {
     match file {
         Ok(file) => {
             if !zlog {
-                print_message(peer.ip().to_string(), &m[1], 200);
+                print_message(&peer.ip().to_string(), &m[1], 200);
             }
             stream.write_all(b"HTTP/1.1 200 OK\n\n").unwrap();
             stream.write_all(&file).unwrap();
@@ -156,7 +160,7 @@ fn handle_client(mut stream: TcpStream, zlog: bool) {
             if !zlog {
                 println!(
                     "{}",
-                    format!("Error reading file (this shouldn't happen): {}", e).red()
+                    format!("Error reading file (this shouldn't happen): {e}").red()
                 );
             }
             error_stream(stream, 500);
@@ -191,25 +195,18 @@ fn main() -> std::io::Result<()> {
                 } else {
                     let left = (ratelimits[&ip] - now).num_seconds();
                     stream.as_ref().unwrap().write_all(
-                        format!(
-                            "HTTP/1.1 429 Too Many Requests\nRetry-After: {}\n\n429\n",
-                            left
-                        )
+                        format!("HTTP/1.1 429 Too Many Requests\nRetry-After: {left}\n\n429\n", )
                         .as_bytes(),
                     )?;
                     stream.as_ref().unwrap().flush()?;
                     stream.as_ref().unwrap().shutdown(Shutdown::Both)?;
                     if cli.verbose {
-                        println!("{}", format!("Rejecting request from rate-limited ip: {}. {} secs left on ratelimit.", ip, left).blue());
+                        println!("{}", format!("Rejecting request from rate-limited ip: {ip}. {left} secs left on ratelimit.").blue());
                     }
                     continue;
                 }
             }
-            if now.minute() != lastminute {
-                lastminute = now.minute();
-                requests.clear();
-                println!("{}", "Request count reset.".blue());
-            } else {
+            if now.minute() == lastminute {
                 if requests.contains_key(&ip) {
                     requests.insert(ip, requests[&ip] + 1);
                 } else {
@@ -224,7 +221,7 @@ fn main() -> std::io::Result<()> {
                                 &ip.to_string(),
                                 requests[&ip]
                             )
-                            .red()
+                                .red()
                         );
                     }
                     ratelimits.insert(
@@ -236,19 +233,20 @@ fn main() -> std::io::Result<()> {
 
                     let left = (ratelimits[&ip] - now).num_seconds();
                     stream.as_ref().unwrap().write_all(
-                        format!(
-                            "HTTP/1.1 429 Too Many Requests\nRetry-After: {}\n\n429\n",
-                            left
-                        )
-                        .as_bytes(),
+                        format!("HTTP/1.1 429 Too Many Requests\nRetry-After: {left}\n\n429\n")
+                            .as_bytes(),
                     )?;
                     stream.as_ref().unwrap().flush()?;
                     stream.as_ref().unwrap().shutdown(Shutdown::Both)?;
                     if cli.verbose {
-                        println!("{}", format!("Rejecting request from rate-limited ip: {}. {} secs left on ratelimit.", ip, left).blue());
+                        println!("{}", format!("Rejecting request from rate-limited ip: {ip}. {left} secs left on ratelimit.").blue());
                     }
                     continue;
                 }
+            } else {
+                lastminute = now.minute();
+                requests.clear();
+                println!("{}", "Request count reset.".blue());
             }
         }
         // Handler
