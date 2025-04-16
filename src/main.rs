@@ -75,7 +75,7 @@ fn print_message(ip: &str, path: &str, error_id: u16) {
     }
 }
 
-fn handle_client(mut stream: TcpStream, zlog: bool, blacklist: &Vec<PathBuf>) {
+fn handle_client(mut stream: TcpStream, zlog: bool, blacklist: &[PathBuf]) {
     static HEADER_REGEX: Lazy<Regex> =
         Lazy::new(|| Regex::new(r"^GET (/.*?) HTTP/(?s).*$").unwrap());
 
@@ -202,13 +202,13 @@ fn main() -> std::io::Result<()> {
     let mut normalizedblist = Vec::new();
 
     // Allow for empty blacklist with -b ""
-    if blist.contains(&String::from("")) && blist.len() == 1{
+    if blist.contains(&String::new()) && blist.len() == 1{
         blist.pop();
     }
 
     {
         let thispath = PathBuf::from(".").canonicalize()?;
-        for b in (&blist).into_iter() {
+        for b in &blist {
             let mut np = thispath.clone();
             np.push(b);
             normalizedblist.push(np);
@@ -217,7 +217,7 @@ fn main() -> std::io::Result<()> {
 
     info!("Blacklist: {:?}", normalizedblist);
     if blist.is_empty() {
-        warn!("Blacklist is empty, log files are exposed.")
+        warn!("Blacklist is empty, log files are exposed.");
     }
 
     for stream in listener.incoming() {
