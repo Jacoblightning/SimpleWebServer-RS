@@ -5,6 +5,7 @@
 
 use chrono::{DateTime, Duration, Timelike, Utc};
 use colored::Colorize;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashMap;
 use std::fs;
@@ -12,7 +13,6 @@ use std::io::{Read, Write};
 use std::net::{IpAddr, Shutdown, TcpListener, TcpStream};
 use std::path::{PathBuf, absolute};
 use std::thread;
-use once_cell::sync::Lazy;
 
 use clap::Parser;
 
@@ -75,7 +75,8 @@ fn print_message(ip: &str, path: &str, error_id: u16) {
 }
 
 fn handle_client(mut stream: TcpStream, zlog: bool) {
-    static HEADER_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"^GET (/.*?) HTTP/(?s).*$").unwrap());
+    static HEADER_REGEX: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r"^GET (/.*?) HTTP/(?s).*$").unwrap());
 
     let peer = stream.peer_addr().unwrap();
     //println!("Connection from {}", peer.to_string());
@@ -122,7 +123,7 @@ fn handle_client(mut stream: TcpStream, zlog: bool) {
     }
 
     if let Ok(path_) = path.canonicalize() {
-        path = path_; 
+        path = path_;
     } else {
         if !zlog {
             println!(
@@ -195,8 +196,8 @@ fn main() -> std::io::Result<()> {
                 } else {
                     let left = (ratelimits[&ip] - now).num_seconds();
                     stream.as_ref().unwrap().write_all(
-                        format!("HTTP/1.1 429 Too Many Requests\nRetry-After: {left}\n\n429\n", )
-                        .as_bytes(),
+                        format!("HTTP/1.1 429 Too Many Requests\nRetry-After: {left}\n\n429\n",)
+                            .as_bytes(),
                     )?;
                     stream.as_ref().unwrap().flush()?;
                     stream.as_ref().unwrap().shutdown(Shutdown::Both)?;
@@ -221,7 +222,7 @@ fn main() -> std::io::Result<()> {
                                 &ip.to_string(),
                                 requests[&ip]
                             )
-                                .red()
+                            .red()
                         );
                     }
                     ratelimits.insert(
