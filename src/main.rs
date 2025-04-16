@@ -1,12 +1,13 @@
-use std::collections::HashMap;
+use chrono::{DateTime, Duration, Timelike, Utc};
 use colored::Colorize;
 use regex::Regex;
+use std::collections::HashMap;
 use std::fs;
 use std::io::{Read, Write};
 use std::net::{IpAddr, Shutdown, TcpListener, TcpStream};
 use std::path::{PathBuf, absolute};
-use chrono::{DateTime, Duration, Timelike, Utc};
 use std::thread;
+use once_cell::sync::Lazy;
 
 use clap::Parser;
 
@@ -19,20 +20,39 @@ struct Cli {
     // Bind Port
     #[arg(default_value_t = 8080)]
     port: u16,
-    #[arg(long, default_value_t = false, help="Disable logging. Primary use case is for company's who say they don't store logs.")]
+    #[arg(
+        long,
+        default_value_t = false,
+        help = "Disable logging. Primary use case is for company's who say they don't store logs."
+    )]
     zerologs: bool,
-    #[arg(short = 'r', long, default_value_t = 120, help="Maximum requests per second before rate-limiting. 0 to disable")]
+    #[arg(
+        short = 'r',
+        long,
+        default_value_t = 120,
+        help = "Maximum requests per second before rate-limiting. 0 to disable"
+    )]
     ratelimit: u16,
-    #[arg(short = 'd', long, default_value_t = 180, help="Timeout in seconds after exceeding ratelimit")]
+    #[arg(
+        short = 'd',
+        long,
+        default_value_t = 180,
+        help = "Timeout in seconds after exceeding ratelimit"
+    )]
     timeout: i64,
-    #[arg(short = 'v', long, default_value_t = false, help="Use verbose output")]
+    #[arg(
+        short = 'v',
+        long,
+        default_value_t = false,
+        help = "Use verbose output"
+    )]
     verbose: bool,
 }
 
 fn error_stream(mut stream: TcpStream, error_id: u16) {
     // These calls dont "need" to succeed. It would just be nice if they did. That's why we use unwrap_or_default
     stream
-        .write(format!("HTTP/1.1 {} Bad Request\n\n{}\n", error_id, error_id).as_bytes())
+        .write_all(format!("HTTP/1.1 {} Bad Request\n\n{}\n", error_id, error_id).as_bytes())
         .unwrap_or_default();
     stream.flush().unwrap_or_default();
     stream.shutdown(Shutdown::Both).unwrap_or_default();
@@ -47,16 +67,18 @@ fn print_message(ip: String, path: &str, error_id: u16) {
     }
 }
 
-fn handle_client(mut stream: TcpStream, header_regex: &Regex, zlog: bool) {
+fn handle_client(mut stream: TcpStream, zlog: bool) {
+    static HEADER_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"^GET (/.*?) HTTP/(?s).*$").unwrap());
+    
     let peer = stream.peer_addr().unwrap();
     //println!("Connection from {}", peer.to_string());
-    
+
     let mut buffer: [u8; 4096] = [0; 4096];
     stream.read(&mut buffer).unwrap();
 
     let header = String::from_utf8_lossy(&buffer);
 
-    if !header_regex.is_match(&header) {
+    if !HEADER_REGEX.is_match(&header) {
         if !zlog {
             println!("{}", "GET - 400".yellow());
         }
@@ -64,7 +86,7 @@ fn handle_client(mut stream: TcpStream, header_regex: &Regex, zlog: bool) {
         return;
     }
 
-    let m = header_regex.captures(&header).unwrap();
+    let m = HEADER_REGEX.captures(&header).unwrap();
 
     // Path parsing
     let mut path: PathBuf = absolute(PathBuf::from(&m[1])).unwrap();
@@ -128,7 +150,7 @@ fn handle_client(mut stream: TcpStream, header_regex: &Regex, zlog: bool) {
                 print_message(peer.ip().to_string(), &m[1], 200);
             }
             stream.write_all(b"HTTP/1.1 200 OK\n\n").unwrap();
-            stream.write_all(&*file).unwrap();
+            stream.write_all(&file).unwrap();
         }
         Err(e) => {
             if !zlog {
@@ -143,7 +165,6 @@ fn handle_client(mut stream: TcpStream, header_regex: &Regex, zlog: bool) {
     }
     stream.flush().unwrap();
     stream.shutdown(Shutdown::Both).unwrap();
-    return;
 }
 
 fn main() -> std::io::Result<()> {
@@ -158,8 +179,6 @@ fn main() -> std::io::Result<()> {
     let mut requests: HashMap<IpAddr, u64> = HashMap::new();
     let mut lastminute = Utc::now().minute();
     let mut ratelimits: HashMap<IpAddr, DateTime<Utc>> = HashMap::new();
-    
-    let mut handles: Vec<thread::JoinHandle<()>> = Vec::new();
 
     for stream in listener.incoming() {
         // Rate limiting
@@ -171,7 +190,13 @@ fn main() -> std::io::Result<()> {
                     ratelimits.remove(&ip);
                 } else {
                     let left = (ratelimits[&ip] - now).num_seconds();
-                    stream.as_ref().unwrap().write(format!("HTTP/1.1 429 Too Many Requests\nRetry-After: {}\n\n429\n", left).as_bytes())?;
+                    stream.as_ref().unwrap().write_all(
+                        format!(
+                            "HTTP/1.1 429 Too Many Requests\nRetry-After: {}\n\n429\n",
+                            left
+                        )
+                        .as_bytes(),
+                    )?;
                     stream.as_ref().unwrap().flush()?;
                     stream.as_ref().unwrap().shutdown(Shutdown::Both)?;
                     if cli.verbose {
@@ -186,19 +211,37 @@ fn main() -> std::io::Result<()> {
                 println!("{}", "Request count reset.".blue());
             } else {
                 if requests.contains_key(&ip) {
-                    requests.insert(ip, requests[&ip]+1);
+                    requests.insert(ip, requests[&ip] + 1);
                 } else {
                     requests.insert(ip, 1);
                 }
                 if requests[&ip] >= cli.ratelimit.into() {
                     if !cli.zerologs {
-                        println!("{}", format!("Rate limiting {} after {} requests in a minute.", &ip.to_string(), requests[&ip]).red());
+                        println!(
+                            "{}",
+                            format!(
+                                "Rate limiting {} after {} requests in a minute.",
+                                &ip.to_string(),
+                                requests[&ip]
+                            )
+                            .red()
+                        );
                     }
-                    ratelimits.insert(ip, now.checked_add_signed(Duration::seconds(cli.timeout)).unwrap());
+                    ratelimits.insert(
+                        ip,
+                        now.checked_add_signed(Duration::seconds(cli.timeout))
+                            .unwrap(),
+                    );
                     requests.remove(&ip);
 
                     let left = (ratelimits[&ip] - now).num_seconds();
-                    stream.as_ref().unwrap().write(format!("HTTP/1.1 429 Too Many Requests\nRetry-After: {}\n\n429\n", left).as_bytes())?;
+                    stream.as_ref().unwrap().write_all(
+                        format!(
+                            "HTTP/1.1 429 Too Many Requests\nRetry-After: {}\n\n429\n",
+                            left
+                        )
+                        .as_bytes(),
+                    )?;
                     stream.as_ref().unwrap().flush()?;
                     stream.as_ref().unwrap().shutdown(Shutdown::Both)?;
                     if cli.verbose {
@@ -209,17 +252,7 @@ fn main() -> std::io::Result<()> {
             }
         }
         // Handler
-        handles.push(std::thread::spawn(
-            move || {
-                // I'm really sad that I have to make a new Regex every iteration but I don't understand rust enough to fix it.
-                let re = Regex::new(r"^GET (/.*?) HTTP/(?s).*$").unwrap();
-                let stream = stream;
-                handle_client(stream.unwrap(), &re, cli.zerologs);
-            }
-        ));
-    }
-    for handle in handles {
-        handle.join().unwrap_or_default();
+        thread::spawn(move || handle_client(stream.unwrap(), cli.zerologs));
     }
     Ok(())
 }

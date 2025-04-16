@@ -9,6 +9,7 @@ dependencies = [
  "chrono",
  "clap",
  "colored",
+ "once_cell",
  "regex",
 ]
 
