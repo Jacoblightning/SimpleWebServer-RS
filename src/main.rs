@@ -3,18 +3,18 @@
 #![deny(clippy::nursery)]
 #![deny(clippy::cargo)]
 
-use chrono::{DateTime, Duration, Timelike, Utc, Local};
-use colored::Colorize;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashMap;
-use std::fs;
+use std::{fs, fs::File};
 use std::io::{Read, Write};
 use std::net::{IpAddr, Shutdown, TcpListener, TcpStream};
 use std::path::{PathBuf, absolute};
 use std::thread;
-
+use chrono::{DateTime, Duration, Timelike, Utc};
 use clap::Parser;
+
+use simplelog::*;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -54,6 +54,8 @@ struct Cli {
         conflicts_with = "zerologs"
     )]
     verbose: bool,
+    #[arg(short = 'b', long, help="Files to blacklist from serving. (Defaults to log files)")]
+    blacklist: Option<Vec<String>>,
 }
 
 fn error_stream(mut stream: TcpStream, error_id: u16) {
@@ -66,16 +68,14 @@ fn error_stream(mut stream: TcpStream, error_id: u16) {
 }
 
 fn print_message(ip: &str, path: &str, error_id: u16) {
-    let time = Local::now().format("%a %b %e %I:%M:%S %p %Y");
-    let message = format!("{time} - {ip}: GET {path} - {error_id}");
     if error_id == 200 {
-        println!("{}", message.green());
+        trace!("{ip}: GET {path} - {error_id}");
     } else {
-        println!("{}", message.yellow());
+        info!("{ip}: GET {path} - {error_id}");
     }
 }
 
-fn handle_client(mut stream: TcpStream, zlog: bool) {
+fn handle_client(mut stream: TcpStream, zlog: bool, blacklist: &Vec<PathBuf>) {
     static HEADER_REGEX: Lazy<Regex> =
         Lazy::new(|| Regex::new(r"^GET (/.*?) HTTP/(?s).*$").unwrap());
 
@@ -89,8 +89,7 @@ fn handle_client(mut stream: TcpStream, zlog: bool) {
 
     if !HEADER_REGEX.is_match(&header) {
         if !zlog {
-            let time = Local::now().format("%a %b %e %I:%M:%S %p %Y");
-            println!("{time} - {}", "GET - 400".yellow());
+            warn!("Malformed request from {peer}:\n{header}");
         }
         error_stream(stream, 400);
         return;
@@ -128,11 +127,8 @@ fn handle_client(mut stream: TcpStream, zlog: bool) {
         path = path_;
     } else {
         if !zlog {
-            let time = Local::now().format("%a %b %e %I:%M:%S %p %Y");
-            println!(
-                "{time} - {}",
-                format!("!!! TOCTOU Prevented: {} !!!", path.display()).red()
-            );
+            error!(
+                "!!! TOCTOU Prevented: {} !!!", path.display());
         }
         error_stream(stream, 404);
         return;
@@ -141,12 +137,15 @@ fn handle_client(mut stream: TcpStream, zlog: bool) {
     // Protection from directory escape
     if !path.starts_with(PathBuf::from(".").canonicalize().unwrap()) {
         if !zlog {
-            let time = Local::now().format("%a %b %e %I:%M:%S %p %Y");
-            println!(
-                "{time} - {}",
-                format!("!!! Directory escape prevented: {} !!!", path.display()).red()
-            );
+            error!("!!! Directory escape prevented: {} !!!", path.display());
         }
+        error_stream(stream, 404);
+        return;
+    }
+
+    // Blacklisting
+    if blacklist.contains(&path){
+        warn!("Blacklisted file requested: {}", path.display());
         error_stream(stream, 404);
         return;
     }
@@ -163,11 +162,7 @@ fn handle_client(mut stream: TcpStream, zlog: bool) {
         }
         Err(e) => {
             if !zlog {
-                let time = Local::now().format("%a %b %e %I:%M:%S %p %Y");
-                println!(
-                    "{time} - {}",
-                    format!("Error reading file (this shouldn't happen): {e}").red()
-                );
+                error!("Error reading file (this shouldn't happen): {e}");
             }
             error_stream(stream, 500);
             return;
@@ -178,18 +173,52 @@ fn handle_client(mut stream: TcpStream, zlog: bool) {
 }
 
 fn main() -> std::io::Result<()> {
+    let logconfig = ConfigBuilder::new()
+        .set_time_format_custom(format_description!(version = 2, "[weekday repr:short] [month repr:short] [day] [hour repr:12]:[minute]:[second] [period case:upper] [year repr:full]"))
+        .build();
+
+    CombinedLogger::init(
+        vec![
+            TermLogger::new(LevelFilter::Info,   logconfig.clone(), TerminalMode::Mixed, ColorChoice::Auto),
+            WriteLogger::new(LevelFilter::Debug, logconfig.clone(), File::create("SimpleWebServer.log")?),
+            WriteLogger::new(LevelFilter::Trace, logconfig, File::create("SimpleWebServer-FULL.log")?),
+        ]
+    ).unwrap();
+
     let cli = Cli::parse();
 
     //let re = Regex::new(r"^GET (/.*?) HTTP/(?s).*$").unwrap();
 
     let listener = TcpListener::bind(format!("{}:{}", cli.bindto, cli.port))?;
 
-    let time = Local::now().format("%a %b %e %I:%M:%S %p %Y");
-    println!("{time} - Serving on: {}", listener.local_addr()?);
+    info!("Serving on: {}", listener.local_addr()?);
 
     let mut requests: HashMap<IpAddr, u64> = HashMap::new();
     let mut lastminute = Utc::now().minute();
     let mut ratelimits: HashMap<IpAddr, DateTime<Utc>> = HashMap::new();
+
+    info!("Parsing blacklist...");
+    let mut blist = cli.blacklist.unwrap_or_else(|| vec!["SimpleWebServer.log".parse().unwrap(), "SimpleWebServer-FULL.log".parse().unwrap()]);
+    let mut normalizedblist = Vec::new();
+
+    // Allow for empty blacklist with -b ""
+    if blist.contains(&String::from("")) && blist.len() == 1{
+        blist.pop();
+    }
+
+    {
+        let thispath = PathBuf::from(".").canonicalize()?;
+        for b in (&blist).into_iter() {
+            let mut np = thispath.clone();
+            np.push(b);
+            normalizedblist.push(np);
+        }
+    }
+
+    info!("Blacklist: {:?}", normalizedblist);
+    if blist.is_empty() {
+        warn!("Blacklist is empty, log files are exposed.")
+    }
 
     for stream in listener.incoming() {
         // Rate limiting
@@ -208,8 +237,7 @@ fn main() -> std::io::Result<()> {
                     stream.as_ref().unwrap().flush()?;
                     stream.as_ref().unwrap().shutdown(Shutdown::Both)?;
                     if cli.verbose {
-                        let time = Local::now().format("%a %b %e %I:%M:%S %p %Y");
-                        println!("{time} - {}", format!("Rejecting request from rate-limited ip: {ip}. {left} secs left on ratelimit.").blue());
+                        debug!("Rejecting request from rate-limited ip: {ip}. {left} secs left on ratelimit.");
                     }
                     continue;
                 }
@@ -222,16 +250,7 @@ fn main() -> std::io::Result<()> {
                 }
                 if requests[&ip] >= cli.ratelimit.into() {
                     if !cli.zerologs {
-                        let time = Local::now().format("%a %b %e %I:%M:%S %p %Y");
-                        println!(
-                            "{time} - {}",
-                            format!(
-                                "Rate limiting {} after {} requests in a minute.",
-                                &ip.to_string(),
-                                requests[&ip]
-                            )
-                            .red()
-                        );
+                        warn!("Rate limiting {} after {} requests in a minute.", &ip.to_string(), requests[&ip]);
                     }
                     ratelimits.insert(
                         ip,
@@ -248,8 +267,7 @@ fn main() -> std::io::Result<()> {
                     stream.as_ref().unwrap().flush()?;
                     stream.as_ref().unwrap().shutdown(Shutdown::Both)?;
                     if cli.verbose {
-                        let time = Local::now().format("%a %b %e %I:%M:%S %p %Y");
-                        println!("{time} - {}", format!("Rejecting request from rate-limited ip: {ip}. {left} secs left on ratelimit.").blue());
+                        debug!("Rejecting request from rate-limited ip: {ip}. {left} secs left on ratelimit.");
                     }
                     continue;
                 }
@@ -257,13 +275,13 @@ fn main() -> std::io::Result<()> {
                 lastminute = now.minute();
                 requests.clear();
                 if cli.verbose {
-                    let time = Local::now().format("%a %b %e %I:%M:%S %p %Y");
-                    println!("{time} - {}", "Request count reset.".blue());
+                    trace!("Request count reset.");
                 }
             }
         }
+        let b2 = normalizedblist.clone();
         // Handler
-        thread::spawn(move || handle_client(stream.unwrap(), cli.zerologs));
+        thread::spawn(move || handle_client(stream.unwrap(), cli.zerologs, &b2));
         //handle_client(stream?, cli.zerologs);
     }
     Ok(())

@@ -11,9 +11,15 @@ resolver = "3"
 
 
 [dependencies]
+# For argument parsing
 clap = { version = "4.5.36", features = ["derive"] }
-colored = "3.0.0"
+# For Logging
+simplelog = { version = "^0.12.2", features = ["paris"] }
+# For log config. Needed even though it shows as unused
+time = "0.3.41"
+# For rate-limiting
 chrono = "0.4.40"
+# For request parsing
 regex = "1.11.1"
 # For using regex in a loop
 once_cell = "1.21.3"
