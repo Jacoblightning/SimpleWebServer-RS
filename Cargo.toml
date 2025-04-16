@@ -8,6 +8,16 @@ keywords = ["webserver", "web", "server", "simple"]
 categories = ["web-programming::http-server"]
 description = "A very simple web server for hosting html files."
 resolver = "3"
+exclude = [
+    "exploits/",
+    "tests",
+    "clippy.toml",
+    "TODO.md",
+    ".idea",
+    ".github",
+    ".pre-commit-config.yaml",
+    ".gitignore"
+]
 
 
 [dependencies]
