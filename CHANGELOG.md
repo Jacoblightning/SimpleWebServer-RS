@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 
-## [0.1.2] - 2024-04-16
+## [0.1.3] - 2024-04-16
 
 ### First notable release.
 
@@ -27,5 +27,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
-[unreleased]: https://github.com/Jacoblightning/SimpleWebServer-RS/compare/v0.1.2...HEAD
-[0.1.2]: https://github.com/Jacoblightning/SimpleWebServer-RS/releases/tag/v0.1.2
+[unreleased]: https://github.com/Jacoblightning/SimpleWebServer-RS/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/Jacoblightning/SimpleWebServer-RS/releases/tag/v0.1.3
