@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0]
+
+### BREAKING CHANGES IN THIS UPDATE:
+Another update to the path resolver.
+Once again, paths that previously returned 404 may no longer.
+(API/ABI should be relatively stable now. Hopefully no more major updates for a while)
+
 ### Added:
 - Url option handling (ignoring)
 
@@ -62,7 +69,8 @@ Paths that previously returned 404 may no longer.
 
 
 
-[unreleased]: https://github.com/Jacoblightning/SimpleWebServer-RS/compare/v1.0.0...main
+[unreleased]: https://github.com/Jacoblightning/SimpleWebServer-RS/compare/v2.0.0...main
+[2.0.0]: https://github.com/Jacoblightning/SimpleWebServer-RS/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/Jacoblightning/SimpleWebServer-RS/compare/0.2.0...v1.0.0
 [0.2.0]: https://github.com/Jacoblightning/SimpleWebServer-RS/compare/v0.1.4...0.2.0
 [0.1.4]: https://github.com/Jacoblightning/SimpleWebServer-RS/compare/v0.1.3...v0.1.4
