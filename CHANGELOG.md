@@ -20,6 +20,12 @@ Once again, paths that previously returned 404 may no longer.
 ### Added:
 - Url option handling (ignoring)
 
+### Changed:
+- Changed internal time handling to use time crate instead of chrono
+
+### Removed:
+- Dependency on chrono
+
 ## [1.0.0]
 
 ### BREAKING CHANGES IN THIS UPDATE:

@@ -26,10 +26,8 @@ exclude = [
 clap = { version = "4.5.36", features = ["derive"] }
 # For Logging
 simplelog = { version = "^0.12.2", features = ["paris"] }
-# For log config. Needed even though it shows as unused
+# For log config and Rate Limiting
 time = "0.3.41"
-# For rate-limiting
-chrono = "0.4.40"
 # For request parsing
 regex = "1.11.1"
 # For using regex in a loop

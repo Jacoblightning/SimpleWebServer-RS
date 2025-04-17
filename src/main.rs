@@ -3,7 +3,6 @@
 #![deny(clippy::nursery)]
 #![deny(clippy::cargo)]
 
-use chrono::{DateTime, Duration, Timelike, Utc};
 use clap::Parser;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -14,6 +13,7 @@ use std::path::{PathBuf, absolute};
 use std::process::exit;
 use std::thread;
 use std::{fs, fs::File};
+use time::{OffsetDateTime, Duration};
 
 use simplelog::*;
 
@@ -255,8 +255,8 @@ fn main() -> std::io::Result<()> {
     info!("Serving on: {}", listener.local_addr()?);
 
     let mut requests: HashMap<IpAddr, u64> = HashMap::new();
-    let mut lastminute = Utc::now().minute();
-    let mut ratelimits: HashMap<IpAddr, DateTime<Utc>> = HashMap::new();
+    let mut lastminute = OffsetDateTime::now_local().unwrap().minute();
+    let mut ratelimits: HashMap<IpAddr, OffsetDateTime> = HashMap::new();
 
     info!("Parsing blacklist...");
     let mut blist = cli.blacklist.unwrap_or_else(|| {
@@ -290,12 +290,12 @@ fn main() -> std::io::Result<()> {
         // Rate limiting
         if cli.ratelimit > 0 {
             let ip = stream.as_ref().unwrap().peer_addr()?.ip();
-            let now = Utc::now();
+            let now = OffsetDateTime::now_utc();
             if ratelimits.contains_key(&ip) {
-                if now > ratelimits[&ip] {
+                if now.gt(&ratelimits[&ip]) {
                     ratelimits.remove(&ip);
                 } else {
-                    let left = (ratelimits[&ip] - now).num_seconds();
+                    let left = (ratelimits[&ip] - now).whole_seconds();
                     stream.as_ref().unwrap().write_all(
                         format!("HTTP/1.1 429 Too Many Requests\nRetry-After: {left}\n\n429\n",)
                             .as_bytes(),
@@ -322,12 +322,12 @@ fn main() -> std::io::Result<()> {
                     );
                     ratelimits.insert(
                         ip,
-                        now.checked_add_signed(Duration::seconds(cli.timeout))
+                        now.checked_add(Duration::seconds(cli.timeout))
                             .unwrap(),
                     );
                     requests.remove(&ip);
 
-                    let left = (ratelimits[&ip] - now).num_seconds();
+                    let left = (ratelimits[&ip] - now).whole_seconds();
                     stream.as_ref().unwrap().write_all(
                         format!("HTTP/1.1 429 Too Many Requests\nRetry-After: {left}\n\n429\n")
                             .as_bytes(),

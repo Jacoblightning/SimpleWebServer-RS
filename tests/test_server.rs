@@ -151,7 +151,7 @@ pub fn test_toctou_patched() {
     // We disable rate-limiting on the server
     let mut server = getserver(&["--testing", "-r", "0"]);
 
-    let start = chrono::Utc::now();
+    let start = time::OffsetDateTime::now_utc();
 
     loop {
         // Equivalent to `touch index.html`
@@ -173,8 +173,7 @@ pub fn test_toctou_patched() {
         conn.read(&mut Vec::new()).unwrap();
 
         // Break out of the loop if time has expired
-        if chrono::Utc::now().signed_duration_since(start)
-            > chrono::Duration::seconds(TOCTOU_TEST_LENGTH as i64)
+        if time::OffsetDateTime::now_utc() - start > time::Duration::seconds(TOCTOU_TEST_LENGTH as i64)
         {
             break;
         }
