@@ -104,7 +104,7 @@ fn print_message(ip: &str, path: &str, error_id: u16) {
 
 fn handle_client(mut stream: TcpStream, blacklist: &[PathBuf]) {
     static HEADER_REGEX: Lazy<Regex> =
-        Lazy::new(|| Regex::new(r"^GET (/.*?) HTTP/(?s).*$").unwrap());
+        Lazy::new(|| Regex::new(r"^GET (/.*?)(?:\?.*)? HTTP/(?s).*$").unwrap());
 
     let peer = stream.peer_addr().unwrap();
     //println!("Connection from {}", peer.to_string());
