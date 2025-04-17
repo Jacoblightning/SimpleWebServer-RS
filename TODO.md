@@ -6,3 +6,4 @@
 - ~~handle url options (By handle, I mean ignore)~~
 - host a dir list by default
 - breakup main (and other) functions into subfunctions
+- Log level customization
