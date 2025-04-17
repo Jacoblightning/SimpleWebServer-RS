@@ -33,7 +33,7 @@ struct Cli {
         short = 'q',
         long,
         default_value_t = false,
-        help = "Disable logging.",
+        help = "Disable logging. (Log files are still used if `--enablelogfiles` is passed)",
         conflicts_with = "verbose"
     )]
     quiet: bool,
@@ -74,7 +74,7 @@ struct Cli {
     #[arg(
         long,
         default_value_t = false,
-        help = "Indicates that the program is being in test mode."
+        help = "Indicates that the program is being run in test mode. (You don't need this for normal invocation)"
     )]
     testing: bool,
 }
