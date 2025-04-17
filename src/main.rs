@@ -134,15 +134,15 @@ fn handle_client(mut stream: TcpStream, blacklist: &[PathBuf]) {
         path.push("index.html");
     }
 
-    /*
-    if path.extension() == None {
-        // Add .html to non html paths
-        path.set_extension("html");
-    }
-     */
 
     // Convert into a relative path
     path = PathBuf::from(path.strip_prefix("/").unwrap());
+
+    // Trying adding .html after original request 404s
+    if !path.exists() && path.extension() == None {
+        // Add .html to non html paths
+        path.set_extension("html");
+    }
 
     if !path.exists() {
         print_message(&peer.ip().to_string(), &m[1], 404);

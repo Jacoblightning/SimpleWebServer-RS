@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - New tests
+- If a path would return a 404, first try adding .html. If that works, return that instead. (Option to toggle this might be added in the future)
 
 ### Changed
 - Re-work tests. Use a different server for each test
