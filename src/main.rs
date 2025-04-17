@@ -10,7 +10,7 @@ use regex::Regex;
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{IpAddr, Shutdown, TcpListener, TcpStream};
-use std::path::{absolute, PathBuf};
+use std::path::{PathBuf, absolute};
 use std::process::exit;
 use std::thread;
 use std::{fs, fs::File};
@@ -21,6 +21,7 @@ const EXITONEXIT: bool = true;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
+#[allow(clippy::struct_excessive_bools)]
 struct Cli {
     // Bind IP Address
     #[arg(default_value = "127.0.0.1")]
@@ -81,15 +82,19 @@ struct Cli {
 fn error_stream(mut stream: TcpStream, error_id: u16) {
     // These calls don't "need" to succeed. It would just be nice if they did. That's why we use unwrap_or_default
     match error_id {
-        404 => stream
-            .write_all(format!("HTTP/1.1 {error_id} Not Found\n\n{error_id}\n").as_bytes()),
-        400 => stream
-            .write_all(format!("HTTP/1.1 {error_id} Bad Request\n\n{error_id}\n").as_bytes()),
-        500 => stream
-            .write_all(format!("HTTP/1.1 {error_id} Internal Server Error\n\n{error_id}\n").as_bytes()),
+        404 => {
+            stream.write_all(format!("HTTP/1.1 {error_id} Not Found\n\n{error_id}\n").as_bytes())
+        }
+        400 => {
+            stream.write_all(format!("HTTP/1.1 {error_id} Bad Request\n\n{error_id}\n").as_bytes())
+        }
+        500 => stream.write_all(
+            format!("HTTP/1.1 {error_id} Internal Server Error\n\n{error_id}\n").as_bytes(),
+        ),
         _ => stream
-            .write_all(format!("HTTP/1.1 {error_id} Unknown Error\n\n{error_id}\n").as_bytes())
-    }.unwrap_or_default();
+            .write_all(format!("HTTP/1.1 {error_id} Unknown Error\n\n{error_id}\n").as_bytes()),
+    }
+    .unwrap_or_default();
     stream.flush().unwrap_or_default();
     stream.shutdown(Shutdown::Both).unwrap_or_default();
 }
@@ -134,12 +139,11 @@ fn handle_client(mut stream: TcpStream, blacklist: &[PathBuf]) {
         path.push("index.html");
     }
 
-
     // Convert into a relative path
     path = PathBuf::from(path.strip_prefix("/").unwrap());
 
     // Trying adding .html after original request 404s
-    if !path.exists() && path.extension() == None {
+    if !path.exists() && path.extension().is_none() {
         // Add .html to non html paths
         path.set_extension("html");
     }
