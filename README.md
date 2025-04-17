@@ -2,6 +2,8 @@
 
 A simple web server capable of handling GET requests.
 
+This webserver aims to be performant, secure, and just compliant enough that cURL and web browsers will accept it™
+
 # Installation
 ## From crates.io
 
@@ -49,3 +51,32 @@ simplewebserver_rs -r 2 -d 5
 simplewebserver_rs -r 2 -d 2
 ```
 um... anyway
+
+## Anything else?
+
+Most other things (and this) that you can do are explained in the help message.
+
+For example, for v1.0.0:
+```
+A very simple web server for hosting html files.
+
+Usage: simplewebserver_rs [OPTIONS] [BINDTO] [PORT]
+
+Arguments:
+  [BINDTO]  [default: 127.0.0.1]
+  [PORT]    [default: 8080]
+
+Options:
+  -q, --quiet                  Disable logging.
+  -v, --verbose                Use verbose output
+      --enablelogfiles         Use log files in addition to logging on stdout/err
+  -r, --ratelimit <RATELIMIT>  Maximum requests per minute before rate-limiting. 0 to disable [default: 120]
+  -d, --timeout <TIMEOUT>      Timeout in seconds after exceeding ratelimit [default: 180]
+  -b, --blacklist <BLACKLIST>  Files to blacklist from serving. (Defaults to log files)
+      --testing                Indicates that the program is being in test mode.
+  -h, --help                   Print help
+  -V, --version                Print version
+```
+
+# Upcoming features?
+## Check [TODO.md](TODO.md)
