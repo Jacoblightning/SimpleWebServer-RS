@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Re-work tests. Use a different server for each test
+- Corrected error messages from 404s, 400s, and 500s (Well, technically 400s were always correct as every error used "Bad request")
 
 
 ### Removed

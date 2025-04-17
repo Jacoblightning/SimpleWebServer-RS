@@ -80,11 +80,18 @@ struct Cli {
 
 fn error_stream(mut stream: TcpStream, error_id: u16) {
     // These calls don't "need" to succeed. It would just be nice if they did. That's why we use unwrap_or_default
-    stream
-        .write_all(format!("HTTP/1.1 {error_id} Bad Request\n\n{error_id}\n").as_bytes())
-        .unwrap_or_default();
-    stream.flush().unwrap_or_default();
-    stream.shutdown(Shutdown::Both).unwrap_or_default();
+    match error_id {
+        404 => stream
+            .write_all(format!("HTTP/1.1 {error_id} Not Found\n\n{error_id}\n").as_bytes()),
+        400 => stream
+            .write_all(format!("HTTP/1.1 {error_id} Bad Request\n\n{error_id}\n").as_bytes()),
+        500 => stream
+            .write_all(format!("HTTP/1.1 {error_id} Internal Server Error\n\n{error_id}\n").as_bytes()),
+        _ => stream
+            .write_all(format!("HTTP/1.1 {error_id} Unknown Error\n\n{error_id}\n").as_bytes())
+    }.unwrap();
+    stream.flush().unwrap();
+    stream.shutdown(Shutdown::Both).unwrap();
 }
 
 fn print_message(ip: &str, path: &str, error_id: u16) {
