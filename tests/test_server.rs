@@ -1,12 +1,12 @@
-use std::fs::{File, OpenOptions};
 // tests/test_server.rs
 use once_cell::sync::Lazy;
+use std::fs::OpenOptions;
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpStream};
+use std::panic;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::thread;
-use std::panic;
 use std::time::Duration;
 
 struct Server {
@@ -57,11 +57,10 @@ fn set_panic_hook() {
     }))
 }
 
-
-
 fn get_path(path: &str, port: u16) -> TcpStream {
     let mut conn = TcpStream::connect(("127.0.0.1", port)).unwrap();
-    conn.write_all(format!("GET {path} HTTP/1.0\n\n").as_bytes()).unwrap();
+    conn.write_all(format!("GET {path} HTTP/1.0\n\n").as_bytes())
+        .unwrap();
     conn.flush().unwrap();
     conn
 }
@@ -83,7 +82,7 @@ pub fn test_concurrent() {
          * If server is running in concurrent mode, it will fulfill this request right now.
          * If not, it would be waiting for the first request to finish and would deadlock.
          * To avoid this deadlock, we run this in a separate thread that will be killed when we panic.
-        */
+         */
         let result = connection2.read(&mut Vec::new());
 
         connection1.shutdown(Shutdown::Both).unwrap();
@@ -114,15 +113,17 @@ pub fn test_404() {
 
     server.child.kill().unwrap();
 
-    assert_eq!(String::from_utf8_lossy(&buf), "HTTP/1.1 404 Bad Request\n\n404\n");
+    assert_eq!(
+        String::from_utf8_lossy(&buf),
+        "HTTP/1.1 404 Bad Request\n\n404\n"
+    );
 }
-
 
 // TEST OLD EXPLOITS
 
 #[test]
 /// Ported from `exploit-0.1.0.py`
-pub fn test_incorrect_connection_handling(){
+pub fn test_incorrect_connection_handling() {
     let mut server = getserver(&["--testing"]);
 
     let mut conn = TcpStream::connect(("127.0.0.1", server.port)).unwrap();
@@ -138,7 +139,7 @@ pub fn test_incorrect_connection_handling(){
 
 #[test]
 /// Ported from `exploit-0.0.1.sh`
-pub fn test_toctou_patched(){
+pub fn test_toctou_patched() {
     const TOCTOU_TEST_LENGTH: u8 = 10;
 
     if Path::new("index.html").exists() {
@@ -150,12 +151,15 @@ pub fn test_toctou_patched(){
     // We disable rate-limiting on the server
     let mut server = getserver(&["--testing", "-r", "0"]);
 
-
     let start = chrono::Utc::now();
 
     loop {
         // Equivalent to `touch index.html`
-        OpenOptions::new().create(true).write(true).open("index.html").unwrap();
+        OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open("index.html")
+            .unwrap();
 
         // Here, if following along in the shell script, we are interleaving the curl with the rm
         let mut conn = get_path("/", server.port);
@@ -169,7 +173,9 @@ pub fn test_toctou_patched(){
         conn.read(&mut Vec::new()).unwrap();
 
         // Break out of the loop if time has expired
-        if chrono::Utc::now().signed_duration_since(start) > chrono::Duration::seconds(TOCTOU_TEST_LENGTH as i64) {
+        if chrono::Utc::now().signed_duration_since(start)
+            > chrono::Duration::seconds(TOCTOU_TEST_LENGTH as i64)
+        {
             break;
         }
         if !server.child.try_wait().unwrap().is_none() {

@@ -3,20 +3,19 @@
 #![deny(clippy::nursery)]
 #![deny(clippy::cargo)]
 
+use chrono::{DateTime, Duration, Timelike, Utc};
+use clap::Parser;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashMap;
-use std::{fs, fs::File};
 use std::io::{Read, Write};
 use std::net::{IpAddr, Shutdown, TcpListener, TcpStream};
-use std::path::{PathBuf, absolute};
+use std::path::{absolute, PathBuf};
 use std::process::exit;
 use std::thread;
-use chrono::{DateTime, Duration, Timelike, Utc};
-use clap::Parser;
+use std::{fs, fs::File};
 
 use simplelog::*;
-
 
 const EXITONEXIT: bool = true;
 
@@ -45,7 +44,11 @@ struct Cli {
         conflicts_with = "quiet"
     )]
     verbose: bool,
-    #[arg(long, default_value_t = false, help = "Use log files in addition to logging on stdout/err")]
+    #[arg(
+        long,
+        default_value_t = false,
+        help = "Use log files in addition to logging on stdout/err"
+    )]
     enablelogfiles: bool,
     #[arg(
         short = 'r',
@@ -61,10 +64,18 @@ struct Cli {
         help = "Timeout in seconds after exceeding ratelimit"
     )]
     timeout: i64,
-    #[arg(short = 'b', long, help="Files to blacklist from serving. (Defaults to log files)")]
+    #[arg(
+        short = 'b',
+        long,
+        help = "Files to blacklist from serving. (Defaults to log files)"
+    )]
     blacklist: Option<Vec<String>>,
-    #[arg(long, default_value_t = false, help="Indicates that the program is being in test mode.")]
-    testing: bool
+    #[arg(
+        long,
+        default_value_t = false,
+        help = "Indicates that the program is being in test mode."
+    )]
+    testing: bool,
 }
 
 fn error_stream(mut stream: TcpStream, error_id: u16) {
@@ -148,7 +159,7 @@ fn handle_client(mut stream: TcpStream, blacklist: &[PathBuf]) {
     }
 
     // Blacklisting
-    if blacklist.contains(&path){
+    if blacklist.contains(&path) {
         warn!("Blacklisted file requested: {}", path.display());
         error_stream(stream, 404);
         return;
@@ -173,7 +184,6 @@ fn handle_client(mut stream: TcpStream, blacklist: &[PathBuf]) {
 }
 
 fn main() -> std::io::Result<()> {
-
     let cli = Cli::parse();
 
     // We need to do this ASAP
@@ -190,15 +200,41 @@ fn main() -> std::io::Result<()> {
         .build();
 
     if cli.enablelogfiles {
-        CombinedLogger::init(
-            vec![
-                TermLogger::new(if cli.quiet {LevelFilter::Off} else {LevelFilter::Info},   logconfig.clone(), TerminalMode::Mixed, ColorChoice::Auto),
-                WriteLogger::new(LevelFilter::Debug, logconfig.clone(), File::create("SimpleWebServer.log")?),
-                WriteLogger::new(LevelFilter::Trace, logconfig, File::create("SimpleWebServer-FULL.log")?),
-            ]
-        ).unwrap();
+        CombinedLogger::init(vec![
+            TermLogger::new(
+                if cli.quiet {
+                    LevelFilter::Off
+                } else {
+                    LevelFilter::Info
+                },
+                logconfig.clone(),
+                TerminalMode::Mixed,
+                ColorChoice::Auto,
+            ),
+            WriteLogger::new(
+                LevelFilter::Debug,
+                logconfig.clone(),
+                File::create("SimpleWebServer.log")?,
+            ),
+            WriteLogger::new(
+                LevelFilter::Trace,
+                logconfig,
+                File::create("SimpleWebServer-FULL.log")?,
+            ),
+        ])
+        .unwrap();
     } else if !cli.quiet {
-        TermLogger::init(if cli.verbose {LevelFilter::Trace} else {LevelFilter::Info}, logconfig, TerminalMode::Mixed, ColorChoice::Auto).unwrap();
+        TermLogger::init(
+            if cli.verbose {
+                LevelFilter::Trace
+            } else {
+                LevelFilter::Info
+            },
+            logconfig,
+            TerminalMode::Mixed,
+            ColorChoice::Auto,
+        )
+        .unwrap();
     }
 
     //let re = Regex::new(r"^GET (/.*?) HTTP/(?s).*$").unwrap();
@@ -212,11 +248,16 @@ fn main() -> std::io::Result<()> {
     let mut ratelimits: HashMap<IpAddr, DateTime<Utc>> = HashMap::new();
 
     info!("Parsing blacklist...");
-    let mut blist = cli.blacklist.unwrap_or_else(|| vec!["SimpleWebServer.log".parse().unwrap(), "SimpleWebServer-FULL.log".parse().unwrap()]);
+    let mut blist = cli.blacklist.unwrap_or_else(|| {
+        vec![
+            "SimpleWebServer.log".parse().unwrap(),
+            "SimpleWebServer-FULL.log".parse().unwrap(),
+        ]
+    });
     let mut normalizedblist = Vec::new();
 
     // Allow for empty blacklist with -b ""
-    if blist.contains(&String::new()) && blist.len() == 1{
+    if blist.contains(&String::new()) && blist.len() == 1 {
         blist.pop();
     }
 
@@ -250,7 +291,9 @@ fn main() -> std::io::Result<()> {
                     )?;
                     stream.as_ref().unwrap().flush()?;
                     stream.as_ref().unwrap().shutdown(Shutdown::Both)?;
-                    debug!("Rejecting request from rate-limited ip: {ip}. {left} secs left on ratelimit.");
+                    debug!(
+                        "Rejecting request from rate-limited ip: {ip}. {left} secs left on ratelimit."
+                    );
                     continue;
                 }
             }
@@ -261,7 +304,11 @@ fn main() -> std::io::Result<()> {
                     requests.insert(ip, 1);
                 }
                 if requests[&ip] >= cli.ratelimit.into() {
-                    warn!("Rate limiting {} after {} requests in a minute.", &ip.to_string(), requests[&ip]);
+                    warn!(
+                        "Rate limiting {} after {} requests in a minute.",
+                        &ip.to_string(),
+                        requests[&ip]
+                    );
                     ratelimits.insert(
                         ip,
                         now.checked_add_signed(Duration::seconds(cli.timeout))
@@ -276,7 +323,9 @@ fn main() -> std::io::Result<()> {
                     )?;
                     stream.as_ref().unwrap().flush()?;
                     stream.as_ref().unwrap().shutdown(Shutdown::Both)?;
-                    debug!("Rejecting request from rate-limited ip: {ip}. {left} secs left on ratelimit.");
+                    debug!(
+                        "Rejecting request from rate-limited ip: {ip}. {left} secs left on ratelimit."
+                    );
                     continue;
                 }
             } else {
