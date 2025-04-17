@@ -108,14 +108,14 @@ pub fn test_404() {
 
     let mut conn = get_path("/invalid", server.port);
 
-    let mut buf: [u8; 30] = [0; 30];
+    let mut buf: [u8; 28] = [0; 28];
     let _response = conn.read(&mut buf);
 
     server.child.kill().unwrap();
 
     assert_eq!(
         String::from_utf8_lossy(&buf),
-        "HTTP/1.1 404 Bad Request\n\n404\n"
+        "HTTP/1.1 404 Not Found\n\n404\n"
     );
 }
 
