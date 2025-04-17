@@ -10,11 +10,15 @@ use std::{fs, fs::File};
 use std::io::{Read, Write};
 use std::net::{IpAddr, Shutdown, TcpListener, TcpStream};
 use std::path::{PathBuf, absolute};
+use std::process::exit;
 use std::thread;
 use chrono::{DateTime, Duration, Timelike, Utc};
 use clap::Parser;
 
 use simplelog::*;
+
+
+const EXITONEXIT: bool = true;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -59,6 +63,8 @@ struct Cli {
     timeout: i64,
     #[arg(short = 'b', long, help="Files to blacklist from serving. (Defaults to log files)")]
     blacklist: Option<Vec<String>>,
+    #[arg(long, default_value_t = false, help="Indicates that the program is being in test mode.")]
+    testing: bool
 }
 
 fn error_stream(mut stream: TcpStream, error_id: u16) {
@@ -86,7 +92,7 @@ fn handle_client(mut stream: TcpStream, blacklist: &[PathBuf]) {
     //println!("Connection from {}", peer.to_string());
 
     let mut buffer: [u8; 4096] = [0; 4096];
-    let _ = stream.read(&mut buffer).unwrap();
+    let _ = stream.read(&mut buffer).unwrap_or_default();
 
     let header = String::from_utf8_lossy(&buffer);
 
@@ -97,6 +103,10 @@ fn handle_client(mut stream: TcpStream, blacklist: &[PathBuf]) {
     }
 
     let m = HEADER_REGEX.captures(&header).unwrap();
+
+    if EXITONEXIT && &m[1] == "/exit" {
+        exit(0);
+    }
 
     // Path parsing
     let mut path: PathBuf = absolute(PathBuf::from(&m[1])).unwrap();
@@ -149,8 +159,8 @@ fn handle_client(mut stream: TcpStream, blacklist: &[PathBuf]) {
     match file {
         Ok(file) => {
             print_message(&peer.ip().to_string(), &m[1], 200);
-            stream.write_all(b"HTTP/1.1 200 OK\n\n").unwrap();
-            stream.write_all(&file).unwrap();
+            stream.write_all(b"HTTP/1.1 200 OK\n\n").unwrap_or_default();
+            stream.write_all(&file).unwrap_or_default();
         }
         Err(e) => {
             error!("Error reading file (this shouldn't happen): {e}");
@@ -158,16 +168,26 @@ fn handle_client(mut stream: TcpStream, blacklist: &[PathBuf]) {
             return;
         }
     }
-    stream.flush().unwrap();
-    stream.shutdown(Shutdown::Both).unwrap();
+    stream.flush().unwrap_or_default();
+    stream.shutdown(Shutdown::Both).unwrap_or_default();
 }
 
 fn main() -> std::io::Result<()> {
+
+    let cli = Cli::parse();
+
+    // We need to do this ASAP
+    if cli.testing {
+        let oldhook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            oldhook(info);
+            exit(1);
+        }));
+    }
+
     let logconfig = ConfigBuilder::new()
         .set_time_format_custom(format_description!(version = 2, "[weekday repr:short] [month repr:short] [day] [hour repr:12]:[minute]:[second] [period case:upper] [year repr:full]"))
         .build();
-
-    let cli = Cli::parse();
 
     if cli.enablelogfiles {
         CombinedLogger::init(
@@ -180,7 +200,6 @@ fn main() -> std::io::Result<()> {
     } else if !cli.quiet {
         TermLogger::init(if cli.verbose {LevelFilter::Trace} else {LevelFilter::Info}, logconfig, TerminalMode::Mixed, ColorChoice::Auto).unwrap();
     }
-
 
     //let re = Regex::new(r"^GET (/.*?) HTTP/(?s).*$").unwrap();
 

@@ -1,79 +1,66 @@
+use std::fs::{File, OpenOptions};
 // tests/test_server.rs
-use libc::atexit;
 use once_cell::sync::Lazy;
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpStream};
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
-use std::sync::Mutex;
 use std::thread;
+use std::panic;
 use std::time::Duration;
 
-static PORT: Lazy<u16> = Lazy::new(|| fastrand::u16(2..=65535));
-
-pub fn ensure_server_started() {
-    static STARTED: Mutex<Option<Child>> = Mutex::new(None);
-
-    println!("Server port: {}", *PORT);
-
-    let mut started = STARTED.lock().unwrap();
-    if started.is_some() {
-        return;
-    }
-
-    let mut path = std::env::current_exe().unwrap();
-    assert!(path.pop());
-    if path.ends_with("deps") {
-        assert!(path.pop());
-    }
-
-    // Note: Cargo automatically builds this binary for integration tests.
-    path.push(format!(
-        "{}{}",
-        env!("CARGO_PKG_NAME"),
-        std::env::consts::EXE_SUFFIX
-    ));
-
-    let mut cmd = Command::new(path);
-    cmd.env_clear();
-    // For some reason, the tests don't work with these uncommented
-    // cmd.stdout(Stdio::piped());
-    // cmd.stderr(Stdio::piped());
-    // cmd.stdin(Stdio::piped());
-    cmd.args(["127.0.0.1", &PORT.to_string()]);
-
-
-    let server = cmd.spawn().unwrap();
-
-    /*
-    let stdout = server.stdout.take().unwrap();
-    let reader = std::io::BufReader::new(stdout);
-    let mut lines = reader.lines();
-
-    let mut running = false;
-    while let Some(Ok(line)) = lines.next() {
-        if line.contains("Serving") {
-            running = true;
-            break;
-        }
-    }
-
-    assert!(running);
-     */
-
-    // Give the server 1/2 second to start up
-    thread::sleep(Duration::from_millis(500));
-
-    extern "C" fn kill() {
-        STARTED.lock().unwrap().as_mut().unwrap().kill().unwrap();
-    }
-
-    unsafe { atexit(kill) };
-
-    *started = Some(server);
+struct Server {
+    child: Child,
+    port: u16,
 }
 
-fn get_path(path: &str) -> TcpStream {
-    let mut conn = TcpStream::connect(("127.0.0.1", *PORT)).unwrap();
+fn getserver(args: &[&str]) -> Server {
+    static SERVER_BINARY: Lazy<PathBuf> = Lazy::new(|| {
+        let mut path = std::env::current_exe().unwrap();
+        assert!(path.pop());
+        if path.ends_with("deps") {
+            assert!(path.pop());
+        }
+
+        // Note: Cargo automatically builds this binary for integration tests.
+        path.push(format!(
+            "{}{}",
+            env!("CARGO_PKG_NAME"),
+            std::env::consts::EXE_SUFFIX
+        ));
+        path
+    });
+
+    let port = port_check::free_local_ipv4_port().unwrap();
+
+    println!("Server port: {}", port);
+
+    let child = Command::new(SERVER_BINARY.as_path())
+        .env_clear()
+        .args(["127.0.0.1", port.to_string().as_str()])
+        .args(args)
+        .spawn()
+        .unwrap();
+
+    thread::sleep(Duration::from_millis(100));
+
+    Server { child, port }
+}
+
+/// This is fine to call multiple times
+/// Call this in any functions using threads
+fn set_panic_hook() {
+    let hook = panic::take_hook();
+    panic::set_hook(Box::new(move |info| {
+        hook(info);
+        std::process::exit(1);
+    }))
+}
+
+
+
+fn get_path(path: &str, port: u16) -> TcpStream {
+    let mut conn = TcpStream::connect(("127.0.0.1", port)).unwrap();
     conn.write_all(format!("GET {path} HTTP/1.0\n\n").as_bytes()).unwrap();
     conn.flush().unwrap();
     conn
@@ -82,13 +69,15 @@ fn get_path(path: &str) -> TcpStream {
 #[test]
 /// Test that concurrency features are working
 pub fn test_concurrent() {
-    ensure_server_started();
+    let mut server = getserver(&[]);
 
-    let handle = thread::spawn(|| {
+    set_panic_hook();
+
+    let handle = thread::spawn(move || {
         // First connection to server. If server is not running in concurrent mode, it will block until this connection closes
-        let connection1 = TcpStream::connect(("127.0.0.1", *PORT)).unwrap();
+        let connection1 = TcpStream::connect(("127.0.0.1", server.port)).unwrap();
         // Second connection to server. Sends get request to path /
-        let mut connection2 = get_path("/");
+        let mut connection2 = get_path("/", server.port);
 
         /*
          * If server is running in concurrent mode, it will fulfill this request right now.
@@ -101,10 +90,12 @@ pub fn test_concurrent() {
         connection2.shutdown(Shutdown::Both).unwrap();
 
         assert!(result.is_ok());
-        println!("Server read result: {:?}", result.unwrap());
+        println!("Server read result: {:?}", result);
     });
 
     thread::sleep(Duration::from_millis(10));
+
+    server.child.kill().unwrap();
 
     if !handle.is_finished() {
         panic!("Concurrency is not working!");
@@ -114,12 +105,77 @@ pub fn test_concurrent() {
 
 #[test]
 pub fn test_404() {
-    ensure_server_started();
+    let mut server = getserver(&[]);
 
-    let mut conn = get_path("/invalid");
+    let mut conn = get_path("/invalid", server.port);
 
     let mut buf: [u8; 30] = [0; 30];
     let _response = conn.read(&mut buf);
 
+    server.child.kill().unwrap();
+
     assert_eq!(String::from_utf8_lossy(&buf), "HTTP/1.1 404 Bad Request\n\n404\n");
+}
+
+
+// TEST OLD EXPLOITS
+
+#[test]
+/// Ported from `exploit-0.1.0.py`
+pub fn test_incorrect_connection_handling(){
+    let mut server = getserver(&["--testing"]);
+
+    let mut conn = TcpStream::connect(("127.0.0.1", server.port)).unwrap();
+    conn.flush().unwrap();
+    conn.shutdown(Shutdown::Both).unwrap();
+
+    if !server.child.try_wait().unwrap().is_none() {
+        panic!("connection handling bug is not patched server-side!");
+    }
+
+    server.child.kill().unwrap();
+}
+
+#[test]
+/// Ported from `exploit-0.0.1.sh`
+pub fn test_toctou_patched(){
+    const TOCTOU_TEST_LENGTH: u8 = 10;
+
+    if Path::new("index.html").exists() {
+        println!("index.html already exists!");
+        println!("Consider this a skip.");
+        return;
+    }
+
+    // We disable rate-limiting on the server
+    let mut server = getserver(&["--testing", "-r", "0"]);
+
+
+    let start = chrono::Utc::now();
+
+    loop {
+        // Equivalent to `touch index.html`
+        OpenOptions::new().create(true).write(true).open("index.html").unwrap();
+
+        // Here, if following along in the shell script, we are interleaving the curl with the rm
+        let mut conn = get_path("/", server.port);
+
+        // This would be the `sleep 0.0015`
+        thread::sleep(Duration::from_micros(1500));
+
+        std::fs::remove_file("index.html").unwrap();
+
+        // Wait for server to finish processing. (This would be the `wait $pid` line)
+        conn.read(&mut Vec::new()).unwrap();
+
+        // Break out of the loop if time has expired
+        if chrono::Utc::now().signed_duration_since(start) > chrono::Duration::seconds(TOCTOU_TEST_LENGTH as i64) {
+            break;
+        }
+        if !server.child.try_wait().unwrap().is_none() {
+            panic!("TOCTOU is not patched server-side!");
+        }
+    }
+
+    server.child.kill().unwrap();
 }

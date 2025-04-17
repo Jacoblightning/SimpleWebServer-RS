@@ -8,9 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-
+- New tests
 
 ### Changed
+- Re-work tests. Use a different server for each test
 
 
 ### Removed
