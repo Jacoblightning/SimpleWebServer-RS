@@ -89,9 +89,9 @@ fn error_stream(mut stream: TcpStream, error_id: u16) {
             .write_all(format!("HTTP/1.1 {error_id} Internal Server Error\n\n{error_id}\n").as_bytes()),
         _ => stream
             .write_all(format!("HTTP/1.1 {error_id} Unknown Error\n\n{error_id}\n").as_bytes())
-    }.unwrap();
-    stream.flush().unwrap();
-    stream.shutdown(Shutdown::Both).unwrap();
+    }.unwrap_or_default();
+    stream.flush().unwrap_or_default();
+    stream.shutdown(Shutdown::Both).unwrap_or_default();
 }
 
 fn print_message(ip: &str, path: &str, error_id: u16) {
