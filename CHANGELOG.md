@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed:
+- Improved argument descriptions in help
+-
+
 ## [2.0.0]
 
 ### BREAKING CHANGES IN THIS UPDATE:
