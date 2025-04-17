@@ -80,3 +80,6 @@ Options:
 
 # Upcoming features?
 ## Check [TODO.md](TODO.md)
+
+# Why use this?
+## See [whythis.md](whythis.md)
