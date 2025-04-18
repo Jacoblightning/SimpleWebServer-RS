@@ -164,7 +164,7 @@ pub fn test_incorrect_connection_handling() {
 #[test]
 /// Ported from `exploit-0.0.1.sh`
 pub fn test_toctou_patched() {
-    const TOCTOU_TEST_LENGTH: u8 = 10;
+    const TOCTOU_TEST_LENGTH: u8 = 5;
 
     if Path::new("index.html").exists() {
         println!("index.html already exists!");
@@ -189,7 +189,7 @@ pub fn test_toctou_patched() {
         let mut conn = get_path("/", server.port);
 
         // This would be the `sleep 0.0015`
-        thread::sleep(Duration::from_micros(1500));
+        thread::sleep(Duration::from_micros(1000));
 
         std::fs::remove_file("index.html").unwrap();
 

@@ -133,13 +133,15 @@ fn server_path_to_local_path(requested_path: &str) -> Option<PathBuf> {
     // Path parsing
     let mut path: PathBuf = absolute(PathBuf::from(&requested_path)).unwrap();
 
-    if path == PathBuf::from("/") {
+    let path_root = if cfg!(windows) { "C:\\" } else { "/" };
+
+    if path == PathBuf::from(path_root) {
         // If requesting root, change to index.html
         path.push("index.html");
     }
 
     // Convert into a relative path
-    path = PathBuf::from(path.strip_prefix("/").unwrap());
+    path = PathBuf::from(path.strip_prefix(path_root).unwrap());
 
     // Trying adding .html after original request 404s
     if !path.exists() && path.extension().is_none() {
@@ -333,7 +335,8 @@ fn handle_ratelimiting(
             );
             ratelimits.insert(
                 ip,
-                now.checked_add(Duration::seconds(i64::from(timeout))).unwrap(),
+                now.checked_add(Duration::seconds(i64::from(timeout)))
+                    .unwrap(),
             );
             requests.remove(&ip);
 
@@ -392,15 +395,17 @@ fn main() -> std::io::Result<()> {
 
     for mut stream in listener.incoming() {
         // Rate limiting
-        if cli.ratelimit > 0 && !handle_ratelimiting(
+        if cli.ratelimit > 0
+            && !handle_ratelimiting(
                 &mut requests,
                 &mut lastminute,
                 &mut ratelimits,
                 stream.as_mut().unwrap(),
                 ratelimit,
                 timeout,
-            ) {
-                continue;
+            )
+        {
+            continue;
         }
         let b2 = normalizedblist.clone();
         // Handler

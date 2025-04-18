@@ -7,8 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Nothing here yet :)
+
+## [2.1.0]
+
+### Fixed:
+- Fixed windows builds
+
 ### Changed:
 - Improved argument descriptions in help
+- Major codebase refactor
 
 ## [2.0.0]
 
@@ -79,6 +87,7 @@ Paths that previously returned 404 may no longer.
 
 
 [unreleased]: https://github.com/Jacoblightning/SimpleWebServer-RS/compare/v2.0.0...main
+[2.1.0]: https://github.com/Jacoblightning/SimpleWebServer-RS/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/Jacoblightning/SimpleWebServer-RS/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/Jacoblightning/SimpleWebServer-RS/compare/0.2.0...v1.0.0
 [0.2.0]: https://github.com/Jacoblightning/SimpleWebServer-RS/compare/v0.1.4...0.2.0
