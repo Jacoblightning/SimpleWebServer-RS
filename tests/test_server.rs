@@ -108,15 +108,36 @@ pub fn test_404() {
 
     let mut conn = get_path("/invalid", server.port);
 
-    let mut buf: [u8; 28] = [0; 28];
+    let mut buf: [u8; 27] = [0; 27];
     let _response = conn.read(&mut buf);
 
     server.child.kill().unwrap();
 
     assert_eq!(
         String::from_utf8_lossy(&buf),
-        "HTTP/1.1 404 Not Found\n\n404\n"
+        "HTTP/1.1 404 Not Found\n\n404"
     );
+}
+
+#[test]
+pub fn test_ratelimiting_1(){
+    let mut server = getserver(&["-r", "3", "-d", "2", "-v"]);
+
+    for _ in 1..=2 {
+        let mut conn = get_path("/", server.port);
+        let mut buf: [u8; 9] = [0; 9];
+        conn.read(&mut buf).unwrap();
+        assert_eq!(Vec::from(buf), b"HTTP/1.1 ");
+    }
+
+    let mut ratelimited = get_path("/", server.port);
+
+    let mut buf: [u8; 50] = [0; 50];
+    ratelimited.read(&mut buf).unwrap();
+
+    server.child.kill().unwrap();
+
+    assert_eq!(Vec::from(buf), b"HTTP/1.1 429 Too Many Requests\nRetry-After: 2\n\n429");
 }
 
 // TEST OLD EXPLOITS
