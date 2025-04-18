@@ -120,7 +120,7 @@ pub fn test_404() {
 }
 
 #[test]
-pub fn test_ratelimiting_1(){
+pub fn test_ratelimiting_1() {
     let mut server = getserver(&["-r", "3", "-d", "2", "-v"]);
 
     for _ in 1..=2 {
@@ -137,7 +137,10 @@ pub fn test_ratelimiting_1(){
 
     server.child.kill().unwrap();
 
-    assert_eq!(Vec::from(buf), b"HTTP/1.1 429 Too Many Requests\nRetry-After: 2\n\n429");
+    assert_eq!(
+        Vec::from(buf),
+        b"HTTP/1.1 429 Too Many Requests\nRetry-After: 2\n\n429"
+    );
 }
 
 // TEST OLD EXPLOITS
@@ -194,7 +197,8 @@ pub fn test_toctou_patched() {
         conn.read(&mut Vec::new()).unwrap();
 
         // Break out of the loop if time has expired
-        if time::OffsetDateTime::now_utc() - start > time::Duration::seconds(TOCTOU_TEST_LENGTH as i64)
+        if time::OffsetDateTime::now_utc() - start
+            > time::Duration::seconds(TOCTOU_TEST_LENGTH as i64)
         {
             break;
         }

@@ -4,7 +4,9 @@
 - ~~more tests~~
 - ~~handle url options (By handle, I mean ignore)~~
 - ~~Since we require time as a dep of simplelog, it would be nice to stop using chrono and switch fully to time. (Or use a different logger)~~
+- ~~breakup main (and other) functions into subfunctions~~
 - Caching (Might be happening)
 - host a dir list by default
-- breakup main (and other) functions into subfunctions
 - Log level customization
+- Flag on whether to serve symlinks pointing out of the base directory
+- Better explain errors to the user (Actual error handling, don't .unwrap everything)
