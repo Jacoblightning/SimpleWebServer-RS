@@ -173,6 +173,11 @@ fn serve_local_file(
         return Err(());
     }
 
+    if path.is_dir() {
+        // Well, we can't exactly read a dir so instead we serve a dir listing
+        return serve_dir_listing(stream, blacklist, requested_path, path.to_str());
+    }
+
     let file = fs::read(path);
 
     match file {
@@ -191,6 +196,46 @@ fn serve_local_file(
     }
 }
 
+fn serve_dir_listing(
+    stream: &mut TcpStream,
+    blacklist: &[PathBuf],
+    requested_path: &str,
+    actual_path: Option<&str>,
+) -> Result<(), ()> {
+    // Don't look at this too much. It will hurt you
+    if let Ok(files) = fs::read_dir(if actual_path.is_some() {actual_path.unwrap()} else {"."}).map(|d| {d.map(|f| {
+        f.map(|e| {
+            if !blacklist.contains(&e.path()) {
+                e.file_name()
+            } else {
+                "\\//\\".parse().unwrap()
+            }
+        })
+    })}){
+        let files = files.collect::<Result<Vec<_>, _>>().unwrap_or_default();
+
+        let lis = files.iter().map(|f|
+            {
+                if f != "\\//\\" {
+                    format!("{}{}{}{}{}{}{}", "<li><a href=\"", if requested_path != "/" {requested_path} else {""}, "/", f.display(), "\">", f.display(), "</a></li>")
+                } else {
+                    "".parse().unwrap()
+                }
+            }
+        ).collect::<Vec<_>>().join("\n");
+
+        let dir_list = format!(include_str!("dirlist.html"), directory=requested_path, lis=lis);
+
+        stream.write_all(b"HTTP/1.1 200 OK\n\n").unwrap_or_default();
+        stream.write_all(dir_list.as_ref()).unwrap_or_default();
+    } else {
+        error_stream(stream, 500);
+        return Err(());
+    }
+
+    Ok(())
+}
+
 fn handle_client(stream: &mut TcpStream, blacklist: &[PathBuf]) {
     let peer = stream.peer_addr().unwrap().ip();
 
@@ -207,22 +252,24 @@ fn handle_client(stream: &mut TcpStream, blacklist: &[PathBuf]) {
         exit(0);
     }
 
-    let path;
     // Testing if the path exists
-    if let Some(path_) = server_path_to_local_path(&requested_path) {
-        path = path_;
+    if let Some(path) = server_path_to_local_path(&requested_path) {
+        serve_local_file(&path, stream, &peer, blacklist, &requested_path)
+            .map(|()| {
+                stream.flush().unwrap_or_default();
+                stream.shutdown(Shutdown::Both).unwrap_or_default();
+            })
+            .unwrap_or_default();
     } else {
-        error_stream(stream, 404);
-        print_message(&peer.to_string(), &requested_path, 404);
-        return;
+        if requested_path == if cfg!(windows) { "C:\\" } else { "/" } {
+            // Dir listing
+            serve_dir_listing(stream, blacklist, &requested_path, None).unwrap_or_default();
+        } else {
+            error_stream(stream, 404);
+            print_message(&peer.to_string(), &requested_path, 404);
+            return;
+        }
     }
-
-    serve_local_file(&path, stream, &peer, blacklist, &requested_path)
-        .map(|()| {
-            stream.flush().unwrap_or_default();
-            stream.shutdown(Shutdown::Both).unwrap_or_default();
-        })
-        .unwrap_or_default();
 }
 
 fn setup_logger(cli: &Cli) {

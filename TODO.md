@@ -6,7 +6,7 @@
 - ~~Since we require time as a dep of simplelog, it would be nice to stop using chrono and switch fully to time. (Or use a different logger)~~
 - ~~breakup main (and other) functions into subfunctions~~
 - Caching (Might be happening)
-- host a dir list by default
+- ~~host a dir list by default~~
 - Log level customization
 - Flag on whether to serve symlinks pointing out of the base directory (Right now, we don't)
 - Better explain errors to the user (Actual error handling, don't .unwrap everything)
