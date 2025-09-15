@@ -1,5 +1,4 @@
 // tests/test_server.rs
-use once_cell::sync::Lazy;
 use std::fs::OpenOptions;
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpStream};
@@ -15,7 +14,8 @@ struct Server {
 }
 
 fn getserver(args: &[&str]) -> Server {
-    static SERVER_BINARY: Lazy<PathBuf> = Lazy::new(|| {
+    static SERVER_BINARY: std::sync::LazyLock<PathBuf> =
+            std::sync::LazyLock::new(|| {
         let mut path = std::env::current_exe().unwrap();
         assert!(path.pop());
         if path.ends_with("deps") {
@@ -33,7 +33,7 @@ fn getserver(args: &[&str]) -> Server {
 
     let port = port_check::free_local_ipv4_port().unwrap();
 
-    println!("Server port: {}", port);
+    println!("Server port: {port}");
 
     let child = Command::new(SERVER_BINARY.as_path())
         .env_clear()
@@ -89,7 +89,7 @@ pub fn test_concurrent() {
         connection2.shutdown(Shutdown::Both).unwrap();
 
         assert!(result.is_ok());
-        println!("Server read result: {:?}", result);
+        println!("Server read result: {result:?}");
     });
 
     thread::sleep(Duration::from_millis(10));
@@ -126,14 +126,14 @@ pub fn test_ratelimiting_1() {
     for _ in 1..=2 {
         let mut conn = get_path("/", server.port);
         let mut buf: [u8; 9] = [0; 9];
-        conn.read(&mut buf).unwrap();
+        let _ = conn.read(&mut buf).unwrap();
         assert_eq!(Vec::from(buf), b"HTTP/1.1 ");
     }
 
     let mut ratelimited = get_path("/", server.port);
 
     let mut buf: [u8; 50] = [0; 50];
-    ratelimited.read(&mut buf).unwrap();
+    let _ = ratelimited.read(&mut buf).unwrap();
 
     server.child.kill().unwrap();
 
@@ -154,7 +154,7 @@ pub fn test_incorrect_connection_handling() {
     conn.flush().unwrap();
     conn.shutdown(Shutdown::Both).unwrap();
 
-    if !server.child.try_wait().unwrap().is_none() {
+    if server.child.try_wait().unwrap().is_some() {
         panic!("connection handling bug is not patched server-side!");
     }
 
@@ -182,6 +182,7 @@ pub fn test_toctou_patched() {
         OpenOptions::new()
             .create(true)
             .write(true)
+            .truncate(false)
             .open("index.html")
             .unwrap();
 
@@ -194,7 +195,7 @@ pub fn test_toctou_patched() {
         std::fs::remove_file("index.html").unwrap();
 
         // Wait for server to finish processing. (This would be the `wait $pid` line)
-        conn.read(&mut Vec::new()).unwrap();
+        let _ = conn.read(&mut Vec::new()).unwrap();
 
         // Break out of the loop if time has expired
         if time::OffsetDateTime::now_utc() - start
@@ -202,7 +203,7 @@ pub fn test_toctou_patched() {
         {
             break;
         }
-        if !server.child.try_wait().unwrap().is_none() {
+        if server.child.try_wait().unwrap().is_some() {
             panic!("TOCTOU is not patched server-side!");
         }
     }
