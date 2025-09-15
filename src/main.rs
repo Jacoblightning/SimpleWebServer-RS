@@ -4,7 +4,6 @@
 #![deny(clippy::cargo)]
 
 use clap::Parser;
-use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -108,8 +107,8 @@ fn print_message(ip: &str, path: &str, error_id: u16) {
 }
 
 fn get_path(stream: &mut TcpStream, peer: &IpAddr) -> Option<String> {
-    static HEADER_REGEX: Lazy<Regex> =
-        Lazy::new(|| Regex::new(r"^GET (/.*?)(?:\?.*)? HTTP/(?s).*$").unwrap());
+    static HEADER_REGEX: std::sync::LazyLock<Regex> =
+        std::sync::LazyLock::new(|| Regex::new(r"^GET (/.*?)(?:\?.*)? HTTP/(?s).*$").unwrap());
 
     //println!("Connection from {}", peer.to_string());
 
@@ -203,12 +202,13 @@ fn serve_dir_listing(
     actual_path: Option<&str>,
 ) -> Result<(), ()> {
     // Don't look at this too much. It will hurt you
-    if let Ok(files) = fs::read_dir(if actual_path.is_some() {actual_path.unwrap()} else {"."}).map(|d| {d.map(|f| {
+    if let Ok(files) = fs::read_dir(actual_path.unwrap_or(".")).map(|d| {d.map(|f| {
         f.map(|e| {
-            if !blacklist.contains(&e.path()) {
-                e.file_name()
-            } else {
+            if blacklist.contains(&e.path()) {
+                // TODO: Fixme
                 "\\//\\".parse().unwrap()
+            } else {
+                e.file_name()
             }
         })
     })}){
@@ -216,10 +216,10 @@ fn serve_dir_listing(
 
         let lis = files.iter().map(|f|
             {
-                if f != "\\//\\" {
-                    format!("{}{}{}{}{}{}{}", "<li><a href=\"", if requested_path != "/" {requested_path} else {""}, "/", f.display(), "\">", f.display(), "</a></li>")
-                } else {
+                if f == "\\//\\" {
                     "".parse().unwrap()
+                } else {
+                    format!("<li><a href=\"{}{}{}\">{}</a></li>", if requested_path == "/" {""} else {requested_path}, "/", f.display(), f.display())
                 }
             }
         ).collect::<Vec<_>>().join("\n");
@@ -260,15 +260,12 @@ fn handle_client(stream: &mut TcpStream, blacklist: &[PathBuf]) {
                 stream.shutdown(Shutdown::Both).unwrap_or_default();
             })
             .unwrap_or_default();
+    } else if requested_path == if cfg!(windows) { "C:\\" } else { "/" } {
+        // Dir listing
+        serve_dir_listing(stream, blacklist, &requested_path, None).unwrap_or_default();
     } else {
-        if requested_path == if cfg!(windows) { "C:\\" } else { "/" } {
-            // Dir listing
-            serve_dir_listing(stream, blacklist, &requested_path, None).unwrap_or_default();
-        } else {
-            error_stream(stream, 404);
-            print_message(&peer.to_string(), &requested_path, 404);
-            return;
-        }
+        error_stream(stream, 404);
+        print_message(&peer.to_string(), &requested_path, 404);
     }
 }
 
