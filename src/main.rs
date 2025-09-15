@@ -199,31 +199,49 @@ fn serve_dir_listing(
     actual_path: Option<&str>,
 ) -> Result<(), ()> {
     // Don't look at this too much. It will hurt you
-    if let Ok(files) = fs::read_dir(actual_path.unwrap_or(".")).map(|d| {d.map(|f| {
-        f.map(|e| {
-            //trace!("Path is: {:?}", &e.path().canonicalize());
-            // Check against canonicalized path if possible. Otherwise just relative path
-            if blacklist.contains(&e.path().canonicalize().unwrap_or_else(|_| {e.path()})) {
-                "\\//\\".parse().unwrap()
-            } else {
-                e.file_name()
-            }
+    if let Ok(files) = fs::read_dir(actual_path.unwrap_or(".")).map(|d| {
+        d.map(|f| {
+            f.map(|e| {
+                //trace!("Path is: {:?}", &e.path().canonicalize());
+                // Check against canonicalized path if possible. Otherwise just relative path
+                if blacklist.contains(&e.path().canonicalize().unwrap_or_else(|_| e.path())) {
+                    "\\//\\".parse().unwrap()
+                } else {
+                    e.file_name()
+                }
+            })
         })
-    })}){
+    }) {
         let files = files.collect::<Result<Vec<_>, _>>().unwrap_or_default();
 
-        let lis = files.iter().map(|f|
-            {
+        let lis = files
+            .iter()
+            .map(|f| {
                 //trace!("F is {:?}", f);
                 if f == "\\//\\" {
                     "".parse().unwrap()
                 } else {
-                    format!("<li><a href=\"{}{}{}\">{}</a></li>", if requested_path == "/" {""} else {requested_path}, "/", f.display(), f.display())
+                    format!(
+                        "<li><a href=\"{}{}{}\">{}</a></li>",
+                        if requested_path == "/" {
+                            ""
+                        } else {
+                            requested_path
+                        },
+                        "/",
+                        f.display(),
+                        f.display()
+                    )
                 }
-            }
-        ).collect::<Vec<_>>().join("\n");
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
 
-        let dir_list = format!(include_str!("dirlist.html"), directory=requested_path, lis=lis);
+        let dir_list = format!(
+            include_str!("dirlist.html"),
+            directory = requested_path,
+            lis = lis
+        );
 
         stream.write_all(b"HTTP/1.1 200 OK\n\n").unwrap_or_default();
         stream.write_all(dir_list.as_ref()).unwrap_or_default();

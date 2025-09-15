@@ -1,6 +1,6 @@
 [package]
 name = "simplewebserver_rs"
-version = "2.1.0"
+version = "2.2.0"
 edition = "2024"
 license = "Apache-2.0 OR MIT"
 repository = "https://github.com/Jacoblightning/SimpleWebServer-RS"
@@ -23,13 +23,13 @@ exclude = [
 
 [dependencies]
 # For argument parsing
-clap = { version = "4.5.36", features = ["derive"] }
+clap = { version = "^4.5.36", features = ["derive"] }
 # For Logging
 simplelog = { version = "^0.12.2", features = ["paris"] }
 # For log config and Rate Limiting
-time = "0.3.41"
+time = "^0.3.41"
 # For request parsing
-regex = "1.11.1"
+regex = "^1.11.1"
 
 # Windows
 #clap_derive = "4.5.45"
@@ -37,4 +37,4 @@ regex = "1.11.1"
 
 # For testing
 [dev-dependencies]
-port_check = "0.3.0"
+port_check = "^0.3.0"
