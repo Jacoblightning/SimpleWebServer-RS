@@ -179,19 +179,16 @@ fn serve_local_file(
 
     let file = fs::read(path);
 
-    match file {
-        Ok(file) => {
-            print_message(&peer.to_string(), requested_path, 200);
-            stream.write_all(b"HTTP/1.1 200 OK\n\n").unwrap_or_default();
-            stream.write_all(&file).unwrap_or_default();
-            Ok(())
-        }
+    if let Ok(file) = file {
+        print_message(&peer.to_string(), requested_path, 200);
+        stream.write_all(b"HTTP/1.1 200 OK\n\n").unwrap_or_default();
+        stream.write_all(&file).unwrap_or_default();
+        Ok(())
+    } else {
         // This state will most likely occur if someone is maliciously manipulating files on the host.
-        Err(_) => {
-            error_stream(stream, 404);
-            error!("!!! TOCTOU Prevented: {} !!!", path.display());
-            Err(())
-        }
+        error_stream(stream, 404);
+        error!("!!! TOCTOU Prevented: {} !!!", path.display());
+        Err(())
     }
 }
 
