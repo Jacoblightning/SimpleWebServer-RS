@@ -201,8 +201,9 @@ fn serve_dir_listing(
     // Don't look at this too much. It will hurt you
     if let Ok(files) = fs::read_dir(actual_path.unwrap_or(".")).map(|d| {d.map(|f| {
         f.map(|e| {
-            if blacklist.contains(&e.path()) {
-                // TODO: Fixme
+            //trace!("Path is: {:?}", &e.path().canonicalize());
+            // Check against canonicalized path if possible. Otherwise just relative path
+            if blacklist.contains(&e.path().canonicalize().unwrap_or_else(|_| {e.path()})) {
                 "\\//\\".parse().unwrap()
             } else {
                 e.file_name()
@@ -213,6 +214,7 @@ fn serve_dir_listing(
 
         let lis = files.iter().map(|f|
             {
+                //trace!("F is {:?}", f);
                 if f == "\\//\\" {
                     "".parse().unwrap()
                 } else {
