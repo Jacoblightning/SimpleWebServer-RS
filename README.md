@@ -37,14 +37,14 @@ You can do that:
 simplewebserver_rs -b file1 -b file2 -b file3 ...
 ```
 
-# Implement an extremely strict ratelimit policy but only enforce it for 5 seconds:
+## Implement an extremely strict ratelimit policy but only enforce it for 5 seconds:
 
 You can even do that:
 ```shell
 simplewebserver_rs -r 2 -d 5
 ```
 
-# Implement an even worse ratelimit policy so you can brag that your webserver is set up like R2-D2:
+## Implement an even worse ratelimit policy so you can brag that your webserver is set up like R2-D2:
 
 ...
 ```shell
@@ -52,7 +52,7 @@ simplewebserver_rs -r 2 -d 2
 ```
 um... anyway
 
-## Anything else?
+# Anything else?
 
 Most other things (and this) that you can do are explained in the help message.
 
