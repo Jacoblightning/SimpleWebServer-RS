@@ -16,16 +16,14 @@ use time::{Duration, OffsetDateTime};
 
 use simplelog::*;
 
-const EXITONEXIT: bool = true;
-
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 #[allow(clippy::struct_excessive_bools)]
 struct Cli {
-    // Bind IP Address
+    /// Bind IP Address
     #[arg(default_value = "127.0.0.1")]
-    bindto: String,
-    // Bind Port
+    address: String,
+    /// Bind Port
     #[arg(default_value_t = 8080)]
     port: u16,
     #[arg(
@@ -264,11 +262,6 @@ fn handle_client(stream: &mut TcpStream, blacklist: &[PathBuf]) {
         return;
     }
 
-    // For testing purposes
-    if EXITONEXIT && requested_path == "/exit" {
-        exit(0);
-    }
-
     // Testing if the path exists
     if let Some(path) = server_path_to_local_path(&requested_path) {
         serve_local_file(&path, stream, &peer, blacklist, &requested_path)
@@ -291,14 +284,18 @@ fn setup_logger(cli: &Cli) {
         .set_time_format_custom(format_description!(version = 2, "[weekday repr:short] [month repr:short] [day] [hour repr:12]:[minute]:[second] [period case:upper] [year repr:full]"))
         .build();
 
+    let clilevel = if cli.quiet {
+        LevelFilter::Off
+    } else if cli.verbose {
+        LevelFilter::Trace
+    } else {
+        LevelFilter::Info
+    };
+
     if cli.enablelogfiles {
         CombinedLogger::init(vec![
             TermLogger::new(
-                if cli.quiet {
-                    LevelFilter::Off
-                } else {
-                    LevelFilter::Info
-                },
+                clilevel,
                 logconfig.clone(),
                 TerminalMode::Mixed,
                 ColorChoice::Auto,
@@ -317,11 +314,7 @@ fn setup_logger(cli: &Cli) {
         .unwrap();
     } else if !cli.quiet {
         TermLogger::init(
-            if cli.verbose {
-                LevelFilter::Trace
-            } else {
-                LevelFilter::Info
-            },
+            clilevel,
             logconfig,
             TerminalMode::Mixed,
             ColorChoice::Auto,
@@ -435,7 +428,7 @@ fn main() -> std::io::Result<()> {
 
     setup_logger(&cli);
 
-    let listener = TcpListener::bind(format!("{}:{}", cli.bindto, cli.port))?;
+    let listener = TcpListener::bind(format!("{}:{}", cli.address, cli.port))?;
 
     info!("Serving on: {}", listener.local_addr()?);
 
