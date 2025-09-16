@@ -7,7 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Nothing here yet :)
+### Added:
+- Logging of directory listings
 
 ## [2.2.1]
 

@@ -175,6 +175,7 @@ fn serve_local_file(
         return serve_dir_listing(stream, blacklist, requested_path, path.to_str());
     }
 
+    // TODO: Buffering
     let file = fs::read(path);
 
     if let Ok(file) = file {
@@ -241,6 +242,7 @@ fn serve_dir_listing(
             lis = lis
         );
 
+        debug!("Serving dir listing of {}", actual_path.unwrap());
         stream.write_all(b"HTTP/1.1 200 OK\n\n").unwrap_or_default();
         stream.write_all(dir_list.as_ref()).unwrap_or_default();
     } else {
