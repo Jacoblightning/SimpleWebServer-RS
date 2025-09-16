@@ -14,8 +14,7 @@ struct Server {
 }
 
 fn getserver(args: &[&str]) -> Server {
-    static SERVER_BINARY: std::sync::LazyLock<PathBuf> =
-            std::sync::LazyLock::new(|| {
+    static SERVER_BINARY: std::sync::LazyLock<PathBuf> = std::sync::LazyLock::new(|| {
         let mut path = std::env::current_exe().unwrap();
         assert!(path.pop());
         if path.ends_with("deps") {

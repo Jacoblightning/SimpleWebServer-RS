@@ -313,13 +313,7 @@ fn setup_logger(cli: &Cli) {
         ])
         .unwrap();
     } else if !cli.quiet {
-        TermLogger::init(
-            clilevel,
-            logconfig,
-            TerminalMode::Mixed,
-            ColorChoice::Auto,
-        )
-        .unwrap();
+        TermLogger::init(clilevel, logconfig, TerminalMode::Mixed, ColorChoice::Auto).unwrap();
     }
 }
 
