@@ -242,7 +242,7 @@ fn serve_dir_listing(
             lis = lis
         );
 
-        debug!("Serving dir listing of {}", actual_path.unwrap());
+        debug!("Serving dir listing of {}", actual_path.unwrap_or("."));
         stream.write_all(b"HTTP/1.1 200 OK\n\n").unwrap_or_default();
         stream.write_all(dir_list.as_ref()).unwrap_or_default();
     } else {
