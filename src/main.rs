@@ -1,4 +1,3 @@
-#![feature(file_buffered)]
 #![deny(clippy::all)]
 #![deny(clippy::pedantic)]
 #![deny(clippy::nursery)]
@@ -13,6 +12,7 @@ use std::path::{PathBuf, absolute};
 use std::process::exit;
 use std::{fs, fs::File, io, thread};
 use time::{Duration, OffsetDateTime};
+use std::io::BufReader;
 
 use simplelog::*;
 
@@ -175,12 +175,13 @@ fn serve_local_file(
         return serve_dir_listing(stream, blacklist, requested_path, path.to_str());
     }
 
-    let file = File::open_buffered(path);
+    let file = File::open(path);
 
-    if let Ok(mut file) = file {
+    if let Ok(file) = file {
+        let mut buffer_file = BufReader::new(file);
         print_message(&peer.to_string(), requested_path, 200);
         stream.write_all(b"HTTP/1.1 200 OK\n\n").unwrap_or_default();
-        if io::copy(&mut file, stream).is_err() {
+        if io::copy(&mut buffer_file, stream).is_err() {
             error!("Error serving file: {}", path.display());
         }
         //stream.write_all(&file).unwrap_or_default();
