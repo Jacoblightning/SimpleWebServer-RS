@@ -104,11 +104,9 @@ pub fn test_concurrent() {
 #[test]
 pub fn test_404() {
     let mut server = getserver(&[]);
-
-    let mut conn = get_path("/invalid", server.port);
-
     let mut buf: [u8; 27] = [0; 27];
-    let _response = conn.read(&mut buf);
+
+    let _response = get_path("/invalid", server.port).read(&mut buf);
 
     server.child.kill().unwrap();
 
@@ -153,9 +151,7 @@ pub fn test_incorrect_connection_handling() {
     conn.flush().unwrap();
     conn.shutdown(Shutdown::Both).unwrap();
 
-    if server.child.try_wait().unwrap().is_some() {
-        panic!("connection handling bug is not patched server-side!");
-    }
+    assert!(server.child.try_wait().unwrap().is_none(), "Connection handling bug is not patched server-side!");
 
     server.child.kill().unwrap();
 }
@@ -202,10 +198,18 @@ pub fn test_toctou_patched() {
         {
             break;
         }
-        if server.child.try_wait().unwrap().is_some() {
-            panic!("TOCTOU is not patched server-side!");
-        }
+
+        assert!(server.child.try_wait().unwrap().is_none(), "TOCTOU is not patched server-side!");
     }
 
     server.child.kill().unwrap();
+}
+
+#[test]
+pub fn test_exitflag_off() {
+    let mut server = getserver(&[]);
+
+    let _conn = get_path("/exit", server.port);
+
+    assert!(server.child.try_wait().unwrap().is_none(), "EXITFLAG is enabled.");
 }
