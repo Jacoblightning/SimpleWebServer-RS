@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added:
 - Logging of directory listings
+- Buffering
 
 ## [2.2.1]
 

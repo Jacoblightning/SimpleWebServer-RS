@@ -1,3 +1,4 @@
+#![feature(file_buffered)]
 #![deny(clippy::all)]
 #![deny(clippy::pedantic)]
 #![deny(clippy::nursery)]
@@ -10,8 +11,7 @@ use std::io::{Read, Write};
 use std::net::{IpAddr, Shutdown, TcpListener, TcpStream};
 use std::path::{PathBuf, absolute};
 use std::process::exit;
-use std::thread;
-use std::{fs, fs::File};
+use std::{fs, fs::File, io, thread};
 use time::{Duration, OffsetDateTime};
 
 use simplelog::*;
@@ -175,13 +175,15 @@ fn serve_local_file(
         return serve_dir_listing(stream, blacklist, requested_path, path.to_str());
     }
 
-    // TODO: Buffering
-    let file = fs::read(path);
+    let file = File::open_buffered(path);
 
-    if let Ok(file) = file {
+    if let Ok(mut file) = file {
         print_message(&peer.to_string(), requested_path, 200);
         stream.write_all(b"HTTP/1.1 200 OK\n\n").unwrap_or_default();
-        stream.write_all(&file).unwrap_or_default();
+        if io::copy(&mut file, stream).is_err() {
+            error!("Error serving file: {}", path.display());
+        }
+        //stream.write_all(&file).unwrap_or_default();
         Ok(())
     } else {
         // This state will most likely occur if someone is maliciously manipulating files on the host.

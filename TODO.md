@@ -10,5 +10,5 @@
 - Log level customization
 - Flag on whether to serve symlinks pointing out of the base directory (Right now, we don't)
 - Better explain errors to the user (Actual error handling, don't .unwrap everything)
-- Buffering
+- ~~Buffering~~
 - Fancy Graphs and Charts of performance analysis
