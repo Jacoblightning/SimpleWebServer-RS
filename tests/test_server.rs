@@ -185,7 +185,7 @@ pub fn test_toctou_patched() {
             .open("index.html")
             .unwrap();
 
-        // Here, if following along in the shell script, we are interleaving the curl with the rm
+        // Here, if following along in the shell script, we are interweaving the curl with the rm
         let mut conn = get_path("/", server.port);
 
         // This would be the `sleep 0.0015`
