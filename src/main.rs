@@ -7,13 +7,12 @@ use clap::Parser;
 use regex::Regex;
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::net::{IpAddr, Shutdown, TcpListener, TcpStream};
+use std::net::{IpAddr, Ipv4Addr, Shutdown, TcpListener, TcpStream};
 use std::path::{PathBuf, absolute};
 use std::process::exit;
 use std::{fs, fs::File, io, thread};
 use time::{Duration, OffsetDateTime};
 use std::io::BufReader;
-
 use simplelog::*;
 
 #[derive(Parser)]
@@ -78,7 +77,7 @@ struct Cli {
 
 fn error_stream(stream: &mut TcpStream, error_id: u16) {
     // These calls don't "need" to succeed. It would just be nice if they did. That's why we use unwrap_or_default
-    match error_id {
+    if match error_id {
         404 => {
             stream.write_all(format!("HTTP/1.1 {error_id} Not Found\n\n{error_id}\n").as_bytes())
         }
@@ -90,10 +89,15 @@ fn error_stream(stream: &mut TcpStream, error_id: u16) {
         ),
         _ => stream
             .write_all(format!("HTTP/1.1 {error_id} Unknown Error\n\n{error_id}\n").as_bytes()),
+    }.is_err() {
+        error!("Could not write error code to stream.");
     }
-    .unwrap_or_default();
-    stream.flush().unwrap_or_default();
-    stream.shutdown(Shutdown::Both).unwrap_or_default();
+    if stream.flush().is_err() {
+        error!("Failed flushing stream.");
+    }
+    if stream.shutdown(Shutdown::Both).is_err() {
+        error!("Failed closing stream.");
+    }
 }
 
 fn print_message(ip: &str, path: &str, error_id: u16) {
@@ -111,7 +115,9 @@ fn get_path(stream: &mut TcpStream, peer: &IpAddr) -> Option<String> {
     //println!("Connection from {}", peer.to_string());
 
     let mut buffer: [u8; 4096] = [0; 4096];
-    let _ = stream.read(&mut buffer).unwrap_or_default();
+    if stream.read(&mut buffer).is_err() {
+        error!("Could not read get request.");
+    }
 
     let header = String::from_utf8_lossy(&buffer);
 
@@ -180,7 +186,9 @@ fn serve_local_file(
     if let Ok(file) = file {
         let mut buffer_file = BufReader::new(file);
         print_message(&peer.to_string(), requested_path, 200);
-        stream.write_all(b"HTTP/1.1 200 OK\n\n").unwrap_or_default();
+        if stream.write_all(b"HTTP/1.1 200 OK\n\n").is_err() {
+            error!("Could not write header to stream.");
+        }
         if io::copy(&mut buffer_file, stream).is_err() {
             error!("Error serving file: {}", path.display());
         }
@@ -246,8 +254,12 @@ fn serve_dir_listing(
         );
 
         debug!("Serving dir listing of {}", actual_path.unwrap_or("."));
-        stream.write_all(b"HTTP/1.1 200 OK\n\n").unwrap_or_default();
-        stream.write_all(dir_list.as_ref()).unwrap_or_default();
+        if stream.write_all(b"HTTP/1.1 200 OK\n\n").is_err() {
+            error!("Could not write header to stream.");
+        }
+        if stream.write_all(dir_list.as_ref()).is_err() {
+            error!("Could not write dirlist to stream.");
+        }
     } else {
         error_stream(stream, 500);
         return Err(());
@@ -257,7 +269,10 @@ fn serve_dir_listing(
 }
 
 fn handle_client(stream: &mut TcpStream, blacklist: &[PathBuf]) {
-    let peer = stream.peer_addr().unwrap().ip();
+    let peer = stream.peer_addr().map_or_else(|_| {
+        error!("Could not get peer ip");
+        IpAddr::V4(Ipv4Addr::UNSPECIFIED)
+    }, |addr| addr.ip());
 
     let requested_path;
 
