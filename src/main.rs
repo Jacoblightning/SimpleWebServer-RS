@@ -461,7 +461,7 @@ fn main() -> std::io::Result<()> {
     setup_blacklist(cli.blacklist, &mut normalizedblist);
     info!("Blacklist: {:?}", normalizedblist);
     if cli.enablelogfiles && normalizedblist.is_empty() {
-        warn!("Blacklist is empty, log files are exposed.");
+        warn!("Blacklist is empty, log files could be exposed.");
     }
 
     for mut stream in listener.incoming() {
