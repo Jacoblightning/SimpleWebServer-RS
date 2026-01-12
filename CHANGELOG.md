@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Logging of directory listings
 - Buffering
 
+### Changed:
+- Improvements to error handling
+
 ## [2.2.1]
 
 ### Fixed:
