@@ -2,6 +2,9 @@
 #![deny(clippy::pedantic)]
 #![deny(clippy::nursery)]
 #![deny(clippy::cargo)]
+// Restrictions
+#![deny(clippy::allow_attributes)]
+#![deny(clippy::allow_attributes_without_reason)]
 
 use clap::Parser;
 use regex::Regex;
@@ -17,7 +20,7 @@ use simplelog::*;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
-#[allow(clippy::struct_excessive_bools)]
+#[expect(clippy::struct_excessive_bools, reason = "Needed for the CLI. Cannot be refactored into a state machine.")]
 struct Cli {
     /// Bind IP Address
     #[arg(default_value = "127.0.0.1")]
@@ -76,7 +79,6 @@ struct Cli {
 }
 
 fn error_stream(stream: &mut TcpStream, error_id: u16) {
-    // These calls don't "need" to succeed. It would just be nice if they did. That's why we use unwrap_or_default
     if match error_id {
         404 => {
             stream.write_all(format!("HTTP/1.1 {error_id} Not Found\n\n{error_id}\n").as_bytes())
@@ -138,6 +140,7 @@ fn server_path_to_local_path(requested_path: &str) -> Option<PathBuf> {
 
     let path_root = if cfg!(windows) { "C:\\" } else { "/" };
 
+    #[expect(clippy::cmp_owned, reason = "Need to make it a PathBuf to compare.")]
     if path == PathBuf::from(path_root) {
         // If requesting root, change to index.html
         path.push("index.html");
