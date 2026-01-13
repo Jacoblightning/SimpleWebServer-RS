@@ -151,7 +151,10 @@ pub fn test_incorrect_connection_handling() {
     conn.flush().unwrap();
     conn.shutdown(Shutdown::Both).unwrap();
 
-    assert!(server.child.try_wait().unwrap().is_none(), "Connection handling bug is not patched server-side!");
+    assert!(
+        server.child.try_wait().unwrap().is_none(),
+        "Connection handling bug is not patched server-side!"
+    );
 
     server.child.kill().unwrap();
 }
@@ -199,7 +202,10 @@ pub fn test_toctou_patched() {
             break;
         }
 
-        assert!(server.child.try_wait().unwrap().is_none(), "TOCTOU is not patched server-side!");
+        assert!(
+            server.child.try_wait().unwrap().is_none(),
+            "TOCTOU is not patched server-side!"
+        );
     }
 
     server.child.kill().unwrap();
@@ -211,5 +217,8 @@ pub fn test_exitflag_off() {
 
     let _conn = get_path("/exit", server.port);
 
-    assert!(server.child.try_wait().unwrap().is_none(), "EXITFLAG is enabled.");
+    assert!(
+        server.child.try_wait().unwrap().is_none(),
+        "EXITFLAG is enabled."
+    );
 }

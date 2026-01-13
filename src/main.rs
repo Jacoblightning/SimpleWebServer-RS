@@ -1,6 +1,5 @@
 // Only use on nightly
 #![cfg_attr(on_nightly, feature(normalize_lexically))]
-
 #![deny(clippy::all)]
 #![deny(clippy::pedantic)]
 #![deny(clippy::nursery)]
@@ -13,19 +12,22 @@
 
 use clap::Parser;
 use regex::Regex;
+use simplelog::*;
 use std::collections::HashMap;
+use std::io::BufReader;
 use std::io::{Read, Write};
 use std::net::{IpAddr, Ipv4Addr, Shutdown, TcpListener, TcpStream};
-use std::path::{PathBuf, Path, absolute};
+use std::path::{Path, PathBuf, absolute};
 use std::process::exit;
 use std::{fs, fs::File, io, thread};
 use time::{Duration, OffsetDateTime};
-use std::io::BufReader;
-use simplelog::*;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
-#[expect(clippy::struct_excessive_bools, reason = "Needed for the CLI. Cannot be refactored into a state machine.")]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "Needed for the CLI. Cannot be refactored into a state machine."
+)]
 struct Cli {
     /// Bind IP Address
     #[arg(default_value = "127.0.0.1")]
@@ -104,7 +106,9 @@ fn error_stream(stream: &mut TcpStream, error_id: u16) {
         ),
         _ => stream
             .write_all(format!("HTTP/1.1 {error_id} Unknown Error\n\n{error_id}\n").as_bytes()),
-    }.is_err() {
+    }
+    .is_err()
+    {
         error!("Could not write error code to stream.");
     }
     if stream.flush().is_err() {
@@ -124,8 +128,9 @@ fn print_message(ip: &str, path: &str, error_id: u16) {
 }
 
 fn get_path(stream: &mut TcpStream, peer: &IpAddr) -> Option<String> {
-    static HEADER_REGEX: std::sync::LazyLock<Regex> =
-        std::sync::LazyLock::new(|| Regex::new(r"^GET (/.*?)(?:\?.*)? HTTP/(?s).*$").expect("Unable to create regex"));
+    static HEADER_REGEX: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+        Regex::new(r"^GET (/.*?)(?:\?.*)? HTTP/(?s).*$").expect("Unable to create regex")
+    });
 
     //println!("Connection from {}", peer.to_string());
 
@@ -142,7 +147,9 @@ fn get_path(stream: &mut TcpStream, peer: &IpAddr) -> Option<String> {
         return None;
     }
 
-    let m = HEADER_REGEX.captures(&header).expect("Could not get captures from regex");
+    let m = HEADER_REGEX
+        .captures(&header)
+        .expect("Could not get captures from regex");
 
     Some(m[1].to_string())
 }
@@ -163,13 +170,22 @@ fn server_path_to_local_path(requested_path: &str) -> Option<(PathBuf, PathBuf)>
     }
 
     // Convert into a relative path
-    path = PathBuf::from(if let Ok(stripped) = path.strip_prefix(path_root) {stripped} else {
-        error!("Could not strip cwd (convert into relative path): {}", path.display());
+    path = PathBuf::from(if let Ok(stripped) = path.strip_prefix(path_root) {
+        stripped
+    } else {
+        error!(
+            "Could not strip cwd (convert into relative path): {}",
+            path.display()
+        );
         return None;
     });
     // Trying adding .html after original request 404s
     if !path.exists() && path.extension().is_none() {
-        trace!("{} not found. Using {}.html instead", path.display(), path.display());
+        trace!(
+            "{} not found. Using {}.html instead",
+            path.display(),
+            path.display()
+        );
         // Add .html to non html paths
         path.set_extension("html");
     }
@@ -179,12 +195,15 @@ fn server_path_to_local_path(requested_path: &str) -> Option<(PathBuf, PathBuf)>
         return None;
     };
 
-    path.canonicalize().map_or(None, |canon| Some((canon, abpath)))
+    path.canonicalize()
+        .map_or(None, |canon| Some((canon, abpath)))
 }
 
 #[cfg(not(on_nightly))]
 fn check_path(path: &Path, _: &Path, _: bool) -> bool {
-    path.starts_with(if let Ok(cwd_canon) = PathBuf::from(".").canonicalize() {cwd_canon} else {
+    path.starts_with(if let Ok(cwd_canon) = PathBuf::from(".").canonicalize() {
+        cwd_canon
+    } else {
         error!("Could not find the current directory. Is someone tampering???");
         return false;
     })
@@ -199,17 +218,25 @@ fn check_path(path: &Path, abpath: &Path, allow_symlinks: bool) -> bool {
             return false;
         };
         // Now just make sure the symlink itself is within our dir
-        if ab_sym.starts_with(if let Ok(cwd_canon) = PathBuf::from(".").canonicalize() {cwd_canon} else {
+        if ab_sym.starts_with(if let Ok(cwd_canon) = PathBuf::from(".").canonicalize() {
+            cwd_canon
+        } else {
             error!("Could not find the current directory. Is someone tampering???");
             return false;
         }) {
-            info!("Redirecting symlink {} to {}.", ab_sym.display(), path.display());
+            info!(
+                "Redirecting symlink {} to {}.",
+                ab_sym.display(),
+                path.display()
+            );
             true
         } else {
             false
         }
     } else {
-        path.starts_with(if let Ok(cwd_canon) = PathBuf::from(".").canonicalize() {cwd_canon} else {
+        path.starts_with(if let Ok(cwd_canon) = PathBuf::from(".").canonicalize() {
+            cwd_canon
+        } else {
             error!("Could not find the current directory. Is someone tampering???");
             return false;
         })
@@ -332,10 +359,13 @@ fn serve_dir_listing(
 }
 
 fn handle_client(stream: &mut TcpStream, blacklist: &[PathBuf], allow_symlinks: bool) {
-    let peer = stream.peer_addr().map_or_else(|_| {
-        error!("Could not get peer ip");
-        IpAddr::V4(Ipv4Addr::UNSPECIFIED)
-    }, |addr| addr.ip());
+    let peer = stream.peer_addr().map_or_else(
+        |_| {
+            error!("Could not get peer ip");
+            IpAddr::V4(Ipv4Addr::UNSPECIFIED)
+        },
+        |addr| addr.ip(),
+    );
 
     let requested_path;
 
@@ -347,12 +377,20 @@ fn handle_client(stream: &mut TcpStream, blacklist: &[PathBuf], allow_symlinks: 
 
     // Testing if the path exists
     if let Some((path, abpath)) = server_path_to_local_path(&requested_path) {
-        serve_local_file(&path, stream, &peer, blacklist, &requested_path, &abpath, allow_symlinks)
-            .map(|()| {
-                stream.flush().unwrap_or_default();
-                stream.shutdown(Shutdown::Both).unwrap_or_default();
-            })
-            .unwrap_or_default();
+        serve_local_file(
+            &path,
+            stream,
+            &peer,
+            blacklist,
+            &requested_path,
+            &abpath,
+            allow_symlinks,
+        )
+        .map(|()| {
+            stream.flush().unwrap_or_default();
+            stream.shutdown(Shutdown::Both).unwrap_or_default();
+        })
+        .unwrap_or_default();
     } else if requested_path == if cfg!(windows) { "C:\\" } else { "/" } {
         // Dir listing
         serve_dir_listing(stream, blacklist, &requested_path, None).unwrap_or_default();
@@ -396,7 +434,8 @@ fn setup_logger(cli: &Cli) {
         ])
         .expect("Could not start logger");
     } else if !cli.quiet {
-        TermLogger::init(clilevel, logconfig, TerminalMode::Mixed, ColorChoice::Auto).expect("Could not start logger");
+        TermLogger::init(clilevel, logconfig, TerminalMode::Mixed, ColorChoice::Auto)
+            .expect("Could not start logger");
     }
 }
 
@@ -415,7 +454,9 @@ fn setup_blacklist(blist: Option<Vec<String>>, normalizedblist: &mut Vec<PathBuf
     }
 
     {
-        let thispath = PathBuf::from(".").canonicalize().expect("Could not find current directory.");
+        let thispath = PathBuf::from(".")
+            .canonicalize()
+            .expect("Could not find current directory.");
         for b in &blist {
             let mut np = thispath.clone();
             np.push(b);
@@ -518,7 +559,9 @@ fn main() -> std::io::Result<()> {
     info!("Serving on: {}", listener.local_addr()?);
 
     let mut requests: HashMap<IpAddr, u64> = HashMap::new();
-    let mut lastminute = OffsetDateTime::now_local().expect("Could not get the current time").minute();
+    let mut lastminute = OffsetDateTime::now_local()
+        .expect("Could not get the current time")
+        .minute();
     let mut ratelimits: HashMap<IpAddr, OffsetDateTime> = HashMap::new();
 
     let mut normalizedblist: Vec<PathBuf> = Vec::new();
@@ -544,7 +587,9 @@ fn main() -> std::io::Result<()> {
                 &mut requests,
                 &mut lastminute,
                 &mut ratelimits,
-                stream.as_mut().expect("Could not get a mutable reference to the stream"),
+                stream
+                    .as_mut()
+                    .expect("Could not get a mutable reference to the stream"),
                 ratelimit,
                 timeout,
             )
@@ -555,7 +600,9 @@ fn main() -> std::io::Result<()> {
         // Handler
 
         // Multithreaded mode:
-        thread::spawn(move || handle_client(&mut stream.expect("Could not get the stream"), &b2, syms));
+        thread::spawn(move || {
+            handle_client(&mut stream.expect("Could not get the stream"), &b2, syms)
+        });
         // Single threaded mode:
         //handle_client(&mut stream?, &b2);
     }
