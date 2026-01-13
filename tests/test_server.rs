@@ -143,23 +143,6 @@ pub fn test_ratelimiting_1() {
 // TEST OLD EXPLOITS
 
 #[test]
-/// Ported from `exploit-0.1.0.py`
-pub fn test_incorrect_connection_handling() {
-    let mut server = getserver(&["--testing"]);
-
-    let mut conn = TcpStream::connect(("127.0.0.1", server.port)).unwrap();
-    conn.flush().unwrap();
-    conn.shutdown(Shutdown::Both).unwrap();
-
-    assert!(
-        server.child.try_wait().unwrap().is_none(),
-        "Connection handling bug is not patched server-side!"
-    );
-
-    server.child.kill().unwrap();
-}
-
-#[test]
 /// Ported from `exploit-0.0.1.sh`
 pub fn test_toctou_patched() {
     const TOCTOU_TEST_LENGTH: u8 = 5;
@@ -212,6 +195,24 @@ pub fn test_toctou_patched() {
 }
 
 #[test]
+/// Ported from `exploit-0.1.0.py`
+pub fn test_incorrect_connection_handling() {
+    let mut server = getserver(&["--testing"]);
+
+    let mut conn = TcpStream::connect(("127.0.0.1", server.port)).unwrap();
+    conn.flush().unwrap();
+    conn.shutdown(Shutdown::Both).unwrap();
+
+    assert!(
+        server.child.try_wait().unwrap().is_none(),
+        "Connection handling bug is not patched server-side!"
+    );
+
+    server.child.kill().unwrap();
+}
+
+#[test]
+/// Ported from `exploit-2.2.0.sh`
 pub fn test_exitflag_off() {
     let mut server = getserver(&[]);
 
