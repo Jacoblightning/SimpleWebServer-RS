@@ -8,7 +8,7 @@
 - Caching (Might be happening)
 - ~~host a dir list by default~~
 - Log level customization
-- Flag on whether to serve symlinks pointing out of the base directory (Right now, we don't)
+- ~~Flag on whether to serve symlinks pointing out of the base directory (Right now, we don't)~~ (Only available when built with nightly)
 - ~~Better explain errors to the user (Actual error handling, don't .unwrap everything)~~
 - ~~Buffering~~
 - Fancy Graphs and Charts of performance analysis

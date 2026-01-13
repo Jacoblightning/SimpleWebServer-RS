@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added:
 - Logging of directory listings
 - Buffering
+- Option to allow external symlinks (Only available when built with nightly)
 
 ### Changed:
 - Improvements to error handling

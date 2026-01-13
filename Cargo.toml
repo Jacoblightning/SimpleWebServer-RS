@@ -30,10 +30,10 @@ time = "^0.3.41"
 # For request parsing
 regex = "^1.11.1"
 
-# Windows
-#clap_derive = "4.5.45"
-#time-macros = "0.2.23"
-
 # For testing
 [dev-dependencies]
 port_check = "^0.3.0"
+
+# For nightly-only features
+[build-dependencies]
+rustversion = "1.0.22"

@@ -1,3 +1,6 @@
+// Only use on nightly
+#![cfg_attr(on_nightly, feature(normalize_lexically))]
+
 #![deny(clippy::all)]
 #![deny(clippy::pedantic)]
 #![deny(clippy::nursery)]
@@ -5,13 +8,14 @@
 // Restrictions
 #![deny(clippy::allow_attributes)]
 #![deny(clippy::allow_attributes_without_reason)]
+#![deny(clippy::cfg_not_test)]
 
 use clap::Parser;
 use regex::Regex;
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{IpAddr, Ipv4Addr, Shutdown, TcpListener, TcpStream};
-use std::path::{PathBuf, absolute};
+use std::path::{PathBuf, Path, absolute};
 use std::process::exit;
 use std::{fs, fs::File, io, thread};
 use time::{Duration, OffsetDateTime};
@@ -76,6 +80,14 @@ struct Cli {
         help = "Indicates that the program is being run in test mode. (You don't need this for normal invocation)"
     )]
     testing: bool,
+    // Only available on nightly
+    #[cfg(on_nightly)]
+    #[arg(
+        long,
+        default_value_t = false,
+        help = "Allow serving symlinks that point out of the base directory"
+    )]
+    allow_external_symlinks: bool,
 }
 
 fn error_stream(stream: &mut TcpStream, error_id: u16) {
@@ -134,7 +146,7 @@ fn get_path(stream: &mut TcpStream, peer: &IpAddr) -> Option<String> {
     Some(m[1].to_string())
 }
 
-fn server_path_to_local_path(requested_path: &str) -> Option<PathBuf> {
+fn server_path_to_local_path(requested_path: &str) -> Option<(PathBuf, PathBuf)> {
     // Path parsing
     let mut path: PathBuf = absolute(PathBuf::from(&requested_path)).unwrap();
 
@@ -148,14 +160,41 @@ fn server_path_to_local_path(requested_path: &str) -> Option<PathBuf> {
 
     // Convert into a relative path
     path = PathBuf::from(path.strip_prefix(path_root).unwrap());
-
     // Trying adding .html after original request 404s
     if !path.exists() && path.extension().is_none() {
+        trace!("{} not found. Using {}.html instead", path.display(), path.display());
         // Add .html to non html paths
         path.set_extension("html");
     }
 
-    path.canonicalize().ok()
+    let abpath = absolute(&path).unwrap();
+
+    path.canonicalize().map_or(None, |canon| Some((canon, abpath)))
+}
+
+#[cfg(not(on_nightly))]
+fn check_path(path: &Path, _: &Path, _: bool) -> bool {
+    path.starts_with(PathBuf::from(".").canonicalize().unwrap())
+}
+
+#[cfg(on_nightly)]
+fn check_path(path: &Path, abpath: &Path, allow_symlinks: bool) -> bool {
+    if allow_symlinks && abpath.is_symlink() {
+        // This is why we need nightly: for normalize_lexically
+        let Ok(ab_sym) = abpath.normalize_lexically() else {
+            error!("Could not normalize path!");
+            return false;
+        };
+        // Now just make sure the symlink itself is within our dir
+        if ab_sym.starts_with(PathBuf::from(".").canonicalize().unwrap()) {
+            info!("Redirecting symlink {} to {}.", ab_sym.display(), path.display());
+            true
+        } else {
+            false
+        }
+    } else {
+        path.starts_with(PathBuf::from(".").canonicalize().unwrap())
+    }
 }
 
 fn serve_local_file(
@@ -164,9 +203,11 @@ fn serve_local_file(
     peer: &IpAddr,
     blacklist: &[PathBuf],
     requested_path: &str,
+    abpath: &Path,
+    allow_symlinks: bool,
 ) -> Result<(), ()> {
     // Protection from directory escape
-    if !path.starts_with(PathBuf::from(".").canonicalize().unwrap()) {
+    if !check_path(path, abpath, allow_symlinks) {
         error_stream(stream, 404);
         error!("!!! Directory escape prevented: {} !!!", path.display());
         return Err(());
@@ -271,7 +312,7 @@ fn serve_dir_listing(
     Ok(())
 }
 
-fn handle_client(stream: &mut TcpStream, blacklist: &[PathBuf]) {
+fn handle_client(stream: &mut TcpStream, blacklist: &[PathBuf], allow_symlinks: bool) {
     let peer = stream.peer_addr().map_or_else(|_| {
         error!("Could not get peer ip");
         IpAddr::V4(Ipv4Addr::UNSPECIFIED)
@@ -286,8 +327,8 @@ fn handle_client(stream: &mut TcpStream, blacklist: &[PathBuf]) {
     }
 
     // Testing if the path exists
-    if let Some(path) = server_path_to_local_path(&requested_path) {
-        serve_local_file(&path, stream, &peer, blacklist, &requested_path)
+    if let Some((path, abpath)) = server_path_to_local_path(&requested_path) {
+        serve_local_file(&path, stream, &peer, blacklist, &requested_path, &abpath, allow_symlinks)
             .map(|()| {
                 stream.flush().unwrap_or_default();
                 stream.shutdown(Shutdown::Both).unwrap_or_default();
@@ -464,6 +505,12 @@ fn main() -> std::io::Result<()> {
         warn!("Blacklist is empty, log files could be exposed.");
     }
 
+    #[cfg(on_nightly)]
+    let syms = cli.allow_external_symlinks;
+
+    #[cfg(not(on_nightly))]
+    let syms = false;
+
     for mut stream in listener.incoming() {
         // Rate limiting
         if cli.ratelimit > 0
@@ -482,7 +529,7 @@ fn main() -> std::io::Result<()> {
         // Handler
 
         // Multithreaded mode:
-        thread::spawn(move || handle_client(&mut stream.unwrap(), &b2));
+        thread::spawn(move || handle_client(&mut stream.unwrap(), &b2, syms));
         // Single threaded mode:
         //handle_client(&mut stream?, &b2);
     }
