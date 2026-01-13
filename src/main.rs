@@ -9,6 +9,7 @@
 #![deny(clippy::allow_attributes)]
 #![deny(clippy::allow_attributes_without_reason)]
 #![deny(clippy::cfg_not_test)]
+#![deny(clippy::unwrap_used)]
 
 use clap::Parser;
 use regex::Regex;
@@ -124,7 +125,7 @@ fn print_message(ip: &str, path: &str, error_id: u16) {
 
 fn get_path(stream: &mut TcpStream, peer: &IpAddr) -> Option<String> {
     static HEADER_REGEX: std::sync::LazyLock<Regex> =
-        std::sync::LazyLock::new(|| Regex::new(r"^GET (/.*?)(?:\?.*)? HTTP/(?s).*$").unwrap());
+        std::sync::LazyLock::new(|| Regex::new(r"^GET (/.*?)(?:\?.*)? HTTP/(?s).*$").expect("Unable to create regex"));
 
     //println!("Connection from {}", peer.to_string());
 
@@ -141,14 +142,17 @@ fn get_path(stream: &mut TcpStream, peer: &IpAddr) -> Option<String> {
         return None;
     }
 
-    let m = HEADER_REGEX.captures(&header).unwrap();
+    let m = HEADER_REGEX.captures(&header).expect("Could not get captures from regex");
 
     Some(m[1].to_string())
 }
 
 fn server_path_to_local_path(requested_path: &str) -> Option<(PathBuf, PathBuf)> {
     // Path parsing
-    let mut path: PathBuf = absolute(PathBuf::from(&requested_path)).unwrap();
+    let Ok(mut path) = absolute(PathBuf::from(&requested_path)) else {
+        error!("Could not get absolute path of {requested_path}.");
+        return None;
+    };
 
     let path_root = if cfg!(windows) { "C:\\" } else { "/" };
 
@@ -159,7 +163,10 @@ fn server_path_to_local_path(requested_path: &str) -> Option<(PathBuf, PathBuf)>
     }
 
     // Convert into a relative path
-    path = PathBuf::from(path.strip_prefix(path_root).unwrap());
+    path = PathBuf::from(if let Ok(stripped) = path.strip_prefix(path_root) {stripped} else {
+        error!("Could not strip cwd (convert into relative path): {}", path.display());
+        return None;
+    });
     // Trying adding .html after original request 404s
     if !path.exists() && path.extension().is_none() {
         trace!("{} not found. Using {}.html instead", path.display(), path.display());
@@ -167,14 +174,20 @@ fn server_path_to_local_path(requested_path: &str) -> Option<(PathBuf, PathBuf)>
         path.set_extension("html");
     }
 
-    let abpath = absolute(&path).unwrap();
+    let Ok(abpath) = absolute(&path) else {
+        error!("Could not get absolute path of file: {}", path.display());
+        return None;
+    };
 
     path.canonicalize().map_or(None, |canon| Some((canon, abpath)))
 }
 
 #[cfg(not(on_nightly))]
 fn check_path(path: &Path, _: &Path, _: bool) -> bool {
-    path.starts_with(PathBuf::from(".").canonicalize().unwrap())
+    path.starts_with(if let Ok(cwd_canon) = PathBuf::from(".").canonicalize() {cwd_canon} else {
+        error!("Could not find the current directory. Is someone tampering???");
+        return false;
+    })
 }
 
 #[cfg(on_nightly)]
@@ -186,14 +199,20 @@ fn check_path(path: &Path, abpath: &Path, allow_symlinks: bool) -> bool {
             return false;
         };
         // Now just make sure the symlink itself is within our dir
-        if ab_sym.starts_with(PathBuf::from(".").canonicalize().unwrap()) {
+        if ab_sym.starts_with(if let Ok(cwd_canon) = PathBuf::from(".").canonicalize() {cwd_canon} else {
+            error!("Could not find the current directory. Is someone tampering???");
+            return false;
+        }) {
             info!("Redirecting symlink {} to {}.", ab_sym.display(), path.display());
             true
         } else {
             false
         }
     } else {
-        path.starts_with(PathBuf::from(".").canonicalize().unwrap())
+        path.starts_with(if let Ok(cwd_canon) = PathBuf::from(".").canonicalize() {cwd_canon} else {
+            error!("Could not find the current directory. Is someone tampering???");
+            return false;
+        })
     }
 }
 
@@ -367,17 +386,17 @@ fn setup_logger(cli: &Cli) {
             WriteLogger::new(
                 LevelFilter::Debug,
                 logconfig.clone(),
-                File::create("SimpleWebServer.log").unwrap(),
+                File::create("SimpleWebServer.log").expect("Could not create log file"),
             ),
             WriteLogger::new(
                 LevelFilter::Trace,
                 logconfig,
-                File::create("SimpleWebServer-FULL.log").unwrap(),
+                File::create("SimpleWebServer-FULL.log").expect("Could not create log file"),
             ),
         ])
-        .unwrap();
+        .expect("Could not start logger");
     } else if !cli.quiet {
-        TermLogger::init(clilevel, logconfig, TerminalMode::Mixed, ColorChoice::Auto).unwrap();
+        TermLogger::init(clilevel, logconfig, TerminalMode::Mixed, ColorChoice::Auto).expect("Could not start logger");
     }
 }
 
@@ -396,7 +415,7 @@ fn setup_blacklist(blist: Option<Vec<String>>, normalizedblist: &mut Vec<PathBuf
     }
 
     {
-        let thispath = PathBuf::from(".").canonicalize().unwrap();
+        let thispath = PathBuf::from(".").canonicalize().expect("Could not find current directory.");
         for b in &blist {
             let mut np = thispath.clone();
             np.push(b);
@@ -414,7 +433,11 @@ fn handle_ratelimiting(
     ratelimit: u16,
     timeout: u32,
 ) -> bool {
-    let ip = stream.peer_addr().unwrap().ip();
+    let Ok(peer_addr) = stream.peer_addr() else {
+        error!("Could not get peer IP address.");
+        return false;
+    };
+    let ip = peer_addr.ip();
     let now = OffsetDateTime::now_utc();
     if ratelimits.contains_key(&ip) {
         if now.gt(&ratelimits[&ip]) {
@@ -448,7 +471,11 @@ fn handle_ratelimiting(
             ratelimits.insert(
                 ip,
                 now.checked_add(Duration::seconds(i64::from(timeout)))
-                    .unwrap(),
+                    .unwrap_or_else(|| {
+                        error!("Could not calculate when ratelimit should expire???");
+                        // Just let the request through I guess?
+                        now
+                    }),
             );
             requests.remove(&ip);
 
@@ -491,7 +518,7 @@ fn main() -> std::io::Result<()> {
     info!("Serving on: {}", listener.local_addr()?);
 
     let mut requests: HashMap<IpAddr, u64> = HashMap::new();
-    let mut lastminute = OffsetDateTime::now_local().unwrap().minute();
+    let mut lastminute = OffsetDateTime::now_local().expect("Could not get the current time").minute();
     let mut ratelimits: HashMap<IpAddr, OffsetDateTime> = HashMap::new();
 
     let mut normalizedblist: Vec<PathBuf> = Vec::new();
@@ -507,7 +534,6 @@ fn main() -> std::io::Result<()> {
 
     #[cfg(on_nightly)]
     let syms = cli.allow_external_symlinks;
-
     #[cfg(not(on_nightly))]
     let syms = false;
 
@@ -518,7 +544,7 @@ fn main() -> std::io::Result<()> {
                 &mut requests,
                 &mut lastminute,
                 &mut ratelimits,
-                stream.as_mut().unwrap(),
+                stream.as_mut().expect("Could not get a mutable reference to the stream"),
                 ratelimit,
                 timeout,
             )
@@ -529,7 +555,7 @@ fn main() -> std::io::Result<()> {
         // Handler
 
         // Multithreaded mode:
-        thread::spawn(move || handle_client(&mut stream.unwrap(), &b2, syms));
+        thread::spawn(move || handle_client(&mut stream.expect("Could not get the stream"), &b2, syms));
         // Single threaded mode:
         //handle_client(&mut stream?, &b2);
     }

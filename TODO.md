@@ -12,3 +12,4 @@
 - ~~Better explain errors to the user (Actual error handling, don't .unwrap everything)~~
 - ~~Buffering~~
 - Fancy Graphs and Charts of performance analysis
+- make modules
