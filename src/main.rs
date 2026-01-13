@@ -601,7 +601,7 @@ fn main() -> std::io::Result<()> {
 
         // Multithreaded mode:
         thread::spawn(move || {
-            handle_client(&mut stream.expect("Could not get the stream"), &b2, syms)
+            handle_client(&mut stream.expect("Could not get the stream"), &b2, syms);
         });
         // Single threaded mode:
         //handle_client(&mut stream?, &b2);

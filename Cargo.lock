@@ -287,7 +287,7 @@ dependencies = [
 
 [[package]]
 name = "simplewebserver_rs"
-version = "2.2.1"
+version = "2.2.2"
 dependencies = [
  "clap",
  "port_check",
