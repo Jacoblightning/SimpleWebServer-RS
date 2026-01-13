@@ -83,6 +83,12 @@ struct Cli {
         help = "Indicates that the program is being run in test mode. (You don't need this for normal invocation)"
     )]
     testing: bool,
+    #[arg(
+        long,
+        default_value_t = false,
+        help = "Runs a single-threaded server (I don't know why you would want this but it's an option)"
+    )]
+    singlethreaded: bool,
     // Only available on nightly
     #[cfg(on_nightly)]
     #[arg(
@@ -599,12 +605,15 @@ fn main() -> std::io::Result<()> {
         let b2 = normalizedblist.clone();
         // Handler
 
-        // Multithreaded mode:
-        thread::spawn(move || {
-            handle_client(&mut stream.expect("Could not get the stream"), &b2, syms);
-        });
-        // Single threaded mode:
-        //handle_client(&mut stream?, &b2);
+        if cli.singlethreaded {
+            // Single threaded mode:
+            handle_client(&mut stream?, &b2, syms);
+        } else {
+            // Multithreaded mode:
+            thread::spawn(move || {
+                handle_client(&mut stream.expect("Could not get the stream"), &b2, syms);
+            });
+        }
     }
     Ok(())
 }

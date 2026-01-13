@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added:
+- Ability to switch between multi and single threaded
+
 ## [2.2.2]
 
 ### Added:
